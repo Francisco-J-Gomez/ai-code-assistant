@@ -53,3 +53,15 @@ def test_creates_db_parent_directory(tmp_path: Path):
     with RawPaperStore(nested_path) as store:
         store.upsert(make_paper())
         assert nested_path.exists()
+
+
+def test_all_round_trips_stored_papers(tmp_path: Path):
+    with RawPaperStore(tmp_path / "papers.db") as store:
+        store.upsert(make_paper(arxiv_id="2301.00001", authors=["A", "B"], categories=["cs.SE", "cs.PL"]))
+        store.upsert(make_paper(arxiv_id="2301.00002"))
+
+        papers = {p.arxiv_id: p for p in store.all()}
+
+        assert set(papers) == {"2301.00001", "2301.00002"}
+        assert papers["2301.00001"].authors == ["A", "B"]
+        assert papers["2301.00001"].categories == ["cs.SE", "cs.PL"]
