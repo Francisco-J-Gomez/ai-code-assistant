@@ -84,6 +84,102 @@ qualitative answer grounding.
 - **Pinecone** — vector store.
 - **LLM** — provider/model TBD.
 
+## Running the ingestion pipeline
+
+Status: fetch + normalize are implemented (`ingestion/`). Chunking, embedding,
+and Pinecone upsert are not built yet.
+
+### Setup
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt   # includes pytest
+```
+
+No API keys needed for this stage — the arXiv API requires no auth.
+
+### Run the tests
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+### Step 1 — fetch raw metadata from arXiv
+
+```bash
+# Small capped run, good for a first sanity check / debugging:
+.venv/bin/python -m ingestion.cli fetch --max-results 15 --db-path data/papers.db
+
+# Full scope (cs.SE + cs.PL, plus keyword-filtered cs.AI/cs.LG/cs.CL, since 2020-01-01):
+.venv/bin/python -m ingestion.cli fetch --db-path data/papers.db
+```
+
+Useful flags: `--categories`, `--keyword-categories`, `--keywords`,
+`--start-date`, `--max-results` (see `ingestion/config.py` for defaults).
+This is rate-limited to arXiv's courtesy ~3s/request, so an uncapped full
+run over ~33k papers will take a while — start with `--max-results` while
+debugging.
+
+Data lands in the `papers` table of the SQLite file at `--db-path`
+(`data/` is gitignored — this is local scratch data, not committed).
+
+### Step 2 — filter & normalize
+
+```bash
+.venv/bin/python -m ingestion.cli normalize --db-path data/papers.db
+```
+
+Reads everything in the raw store, drops out-of-scope/withdrawn/malformed
+papers, cleans title/abstract text, and writes the result to a separate
+`normalized_papers` table in the same file. Re-run anytime after a fetch —
+it's idempotent and safe to re-run after tweaking scope/keywords without
+re-fetching.
+
+### Debugging tips
+
+- Both CLI commands log counts (`Fetched N papers`, `Normalized N, dropped
+  N`) — a big gap between fetched and normalized counts is worth checking
+  with `scripts/inspect_db.py`.
+- Run `fetch` with a small `--max-results` first; only drop the cap once a
+  small batch looks right end-to-end.
+- Logging is INFO by default; category/date/withdrawn drops during
+  `normalize` log at DEBUG/INFO — see `ingestion/normalize.py` if you need
+  to see exactly why a specific paper was dropped.
+
+## Visualizing the dataset locally
+
+There's no `sqlite3` CLI or GUI browser installed in this environment (and
+installing one needs `sudo`, which isn't available non-interactively here),
+so `scripts/inspect_db.py` is a small stdlib-only tool for looking at the
+data without extra setup:
+
+```bash
+# Row counts, published-date range, and category breakdown for both tables:
+.venv/bin/python scripts/inspect_db.py summary
+
+# Most recent N rows (default: normalized table):
+.venv/bin/python scripts/inspect_db.py sample --table normalized --limit 20
+.venv/bin/python scripts/inspect_db.py sample --table raw --limit 20
+
+# Full-text-ish search over title/abstract:
+.venv/bin/python scripts/inspect_db.py search "program repair" --table normalized
+```
+
+Other options if you want something more visual:
+
+- **DB Browser for SQLite** (GUI, spreadsheet-like) — not installed here;
+  `flatpak install flathub io.github.sqlitebrowser.sqlitebrowser` or your
+  distro's package manager if you want it locally.
+- **pandas in a notebook/REPL** for quick stats or plots:
+  ```python
+  import sqlite3, pandas as pd
+  conn = sqlite3.connect("data/papers.db")
+  df = pd.read_sql("SELECT * FROM normalized_papers", conn)
+  df["primary_category"].value_counts()
+  ```
+  (`pip install pandas` — not in requirements.txt, since it's only needed
+  for ad hoc exploration, not the pipeline itself.)
+
 ## Roadmap
 
 1. Ingestion MVP: arXiv API fetch (metadata only, narrow categories) → embed
