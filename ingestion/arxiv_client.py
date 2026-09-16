@@ -26,7 +26,7 @@ def fetch_papers(config: IngestionConfig) -> Iterator[PaperMetadata]:
     between requests per arXiv's courtesy rate-limit guidance, and retrying
     transient failures with exponential backoff.
     """
-    query = _build_search_query(config.categories, config.start_date)
+    query = _build_search_query(config)
     start = 0
     fetched = 0
 
@@ -53,6 +53,8 @@ def fetch_papers(config: IngestionConfig) -> Iterator[PaperMetadata]:
             if paper is None:
                 logger.warning("Skipping entry with unexpected id format: %s", entry.get("id"))
                 continue
+            if not _passes_keyword_filter(paper, config):
+                continue
             yield paper
 
         fetched += len(entries)
@@ -64,10 +66,49 @@ def fetch_papers(config: IngestionConfig) -> Iterator[PaperMetadata]:
         time.sleep(config.request_delay_seconds)
 
 
-def _build_search_query(categories: tuple[str, ...], start_date: str) -> str:
-    category_clause = " OR ".join(f"cat:{c}" for c in categories)
-    start = datetime.strptime(start_date, "%Y-%m-%d").strftime("%Y%m%d%H%M%S")
-    return f"({category_clause}) AND submittedDate:[{start} TO 99991231235959]"
+def _build_search_query(config: IngestionConfig) -> str:
+    """Combine two scope clauses: categories taken in full, and broader
+    categories filtered down to abstracts matching a software-dev keyword.
+    """
+    scope_clauses = []
+
+    if config.categories:
+        scope_clauses.append(
+            "(" + " OR ".join(f"cat:{c}" for c in config.categories) + ")"
+        )
+
+    if config.keyword_filtered_categories and config.keywords:
+        cat_clause = "(" + " OR ".join(f"cat:{c}" for c in config.keyword_filtered_categories) + ")"
+        keyword_clause = "(" + " OR ".join(f'abs:"{k}"' for k in config.keywords) + ")"
+        scope_clauses.append(f"({cat_clause} AND {keyword_clause})")
+
+    if not scope_clauses:
+        raise ValueError("IngestionConfig must define at least one category scope")
+
+    scope = " OR ".join(scope_clauses)
+    start = datetime.strptime(config.start_date, "%Y-%m-%d").strftime("%Y%m%d%H%M%S")
+    return f"({scope}) AND submittedDate:[{start} TO 99991231235959]"
+
+
+def _passes_keyword_filter(paper: PaperMetadata, config: IngestionConfig) -> bool:
+    """Re-check keyword-gated papers client-side.
+
+    arXiv's `abs:"..."` field search does not enforce exact phrase matching
+    (a query for a nonsense reversed phrase still returns hundreds of hits),
+    so papers reached only through `keyword_filtered_categories` are
+    re-verified here with a real substring check on title+abstract. Papers
+    in `config.categories` are always kept regardless of keywords.
+    """
+    paper_categories = set(paper.categories) | {paper.primary_category}
+
+    if paper_categories & set(config.categories):
+        return True
+
+    if paper_categories & set(config.keyword_filtered_categories):
+        haystack = f"{paper.title} {paper.abstract}".lower()
+        return any(keyword.lower() in haystack for keyword in config.keywords)
+
+    return False
 
 
 def _parse_entry(entry) -> Optional[PaperMetadata]:
