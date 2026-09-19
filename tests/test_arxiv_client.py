@@ -1,7 +1,10 @@
+from datetime import datetime
+
 import feedparser
 import pytest
 
-from ingestion.arxiv_client import _build_search_query, _parse_entry, _passes_keyword_filter
+import ingestion.arxiv_client as arxiv_client
+from ingestion.arxiv_client import _fetch_scope_entries, _parse_entry, _passes_keyword_filter, _scope_queries
 from ingestion.config import IngestionConfig
 from ingestion.models import PaperMetadata
 
@@ -58,36 +61,86 @@ def test_parse_entry_returns_none_for_non_arxiv_id():
     assert _parse_entry(feed.entries[0]) is None
 
 
-def test_build_search_query_combines_categories_and_date():
+def test_scope_queries_one_clause_per_full_scope_category():
     config = IngestionConfig(
-        categories=("cs.SE", "cs.PL"),
-        keyword_filtered_categories=(),
-        keywords=(),
-        start_date="2020-01-01",
+        categories=("cs.SE", "cs.PL"), keyword_filtered_categories=(), keywords=(),
     )
-    query = _build_search_query(config)
-    assert query == "((cat:cs.SE OR cat:cs.PL)) AND submittedDate:[20200101000000 TO 99991231235959]"
+    assert _scope_queries(config) == ["cat:cs.SE", "cat:cs.PL"]
 
 
-def test_build_search_query_adds_keyword_filtered_clause():
+def test_scope_queries_adds_keyword_filtered_clause():
     config = IngestionConfig(
         categories=("cs.SE",),
         keyword_filtered_categories=("cs.AI", "cs.LG"),
         keywords=("code generation", "program repair"),
-        start_date="2020-01-01",
     )
-    query = _build_search_query(config)
-    assert query == (
-        '((cat:cs.SE) OR ((cat:cs.AI OR cat:cs.LG) AND '
-        '(abs:"code generation" OR abs:"program repair"))) '
-        "AND submittedDate:[20200101000000 TO 99991231235959]"
-    )
+    assert _scope_queries(config) == [
+        "cat:cs.SE",
+        '(cat:cs.AI OR cat:cs.LG) AND (abs:"code generation" OR abs:"program repair")',
+    ]
 
 
-def test_build_search_query_requires_at_least_one_scope():
+def test_scope_queries_requires_at_least_one_scope():
     config = IngestionConfig(categories=(), keyword_filtered_categories=(), keywords=())
     with pytest.raises(ValueError):
-        _build_search_query(config)
+        _scope_queries(config)
+
+
+class _FakeFeed:
+    def __init__(self, entries, total):
+        self.entries = entries
+        self.feed = {"opensearch_totalresults": str(total)}
+
+
+def test_fetch_scope_entries_paginates_without_bisecting_small_window(monkeypatch):
+    monkeypatch.setattr(arxiv_client.time, "sleep", lambda *_: None)
+
+    items = list(range(7))  # fewer than ARXIV_MAX_START and than one page
+
+    def fake_get_with_retries(params, max_retries):
+        page = items[params["start"]: params["start"] + params["max_results"]]
+        return _FakeFeed(page, total=len(items))
+
+    monkeypatch.setattr(arxiv_client, "_get_with_retries", fake_get_with_retries)
+
+    config = IngestionConfig(page_size=3, max_retries=1)
+    results = list(_fetch_scope_entries("cat:cs.SE", datetime(2020, 1, 1), datetime(2020, 1, 2), config))
+
+    assert results == items
+
+
+def test_fetch_scope_entries_bisects_oversized_window_without_duplicates(monkeypatch):
+    # ARXIV_MAX_START patched small so the test doesn't need thousands of
+    # fake entries to exercise the bisection path.
+    monkeypatch.setattr(arxiv_client, "ARXIV_MAX_START", 10)
+    monkeypatch.setattr(arxiv_client.time, "sleep", lambda *_: None)
+
+    date_from = datetime(2020, 1, 1)
+    date_to = datetime(2020, 1, 2)
+    total_items = 25
+    span = (date_to - date_from) / total_items
+    all_items = [(i, date_from + span * i) for i in range(total_items)]
+
+    requested_starts = []
+
+    def fake_get_with_retries(params, max_retries):
+        window = params["search_query"].split("submittedDate:[")[1].rstrip("]")
+        from_str, to_str = (s.strip() for s in window.split(" TO "))
+        win_from = datetime.strptime(from_str, "%Y%m%d%H%M%S")
+        win_to = datetime.strptime(to_str, "%Y%m%d%H%M%S")
+        matching = [i for i, ts in all_items if win_from <= ts < win_to]
+
+        requested_starts.append(params["start"])
+        page = matching[params["start"]: params["start"] + params["max_results"]]
+        return _FakeFeed(page, total=len(matching))
+
+    monkeypatch.setattr(arxiv_client, "_get_with_retries", fake_get_with_retries)
+
+    config = IngestionConfig(page_size=5, max_retries=1)
+    results = list(_fetch_scope_entries("cat:cs.SE", date_from, date_to, config))
+
+    assert sorted(results) == list(range(total_items))  # every item exactly once
+    assert max(requested_starts) < 10  # never paginates past the (patched) wall
 
 
 def make_paper(**overrides) -> PaperMetadata:

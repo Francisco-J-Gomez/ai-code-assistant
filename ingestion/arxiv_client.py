@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Iterator, Optional
 
 import feedparser
@@ -14,6 +14,15 @@ logger = logging.getLogger(__name__)
 ARXIV_API_URL = "http://export.arxiv.org/api/query"
 ARXIV_ABS_PREFIX = "http://arxiv.org/abs/"
 
+# arXiv's legacy API returns a 500 for ANY query once `start` reaches ~10000,
+# regardless of query complexity - confirmed against a trivial single-category
+# query. It's a hard wall, not something retries can work around. A scope
+# query whose total result count exceeds this has its date range bisected
+# up front (see _fetch_scope_entries) instead of paginating into the wall.
+# Margin below the observed 10000 failure point in case it's not exact under
+# load.
+ARXIV_MAX_START = 9000
+
 
 class ArxivClientError(Exception):
     """Raised when the arXiv API cannot be queried successfully."""
@@ -22,72 +31,122 @@ class ArxivClientError(Exception):
 def fetch_papers(config: IngestionConfig) -> Iterator[PaperMetadata]:
     """Yield PaperMetadata for every paper matching the configured scope.
 
-    Paginates through the arXiv API, sleeping `config.request_delay_seconds`
-    between requests per arXiv's courtesy rate-limit guidance, and retrying
-    transient failures with exponential backoff.
+    Each scope clause (see `_scope_queries`) is fetched independently so
+    that no single query's result count risks the deep-pagination 500
+    described above. Sleeps `config.request_delay_seconds` between requests
+    per arXiv's courtesy rate-limit guidance, and retries transient failures
+    with exponential backoff.
     """
-    query = _build_search_query(config)
-    start = 0
+    date_from = datetime.strptime(config.start_date, "%Y-%m-%d")
+    date_to = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)  # open-ended upper bound
+
     fetched = 0
+    for scope_query in _scope_queries(config):
+        for entry in _fetch_scope_entries(scope_query, date_from, date_to, config):
+            if config.max_results is not None and fetched >= config.max_results:
+                return
 
-    while config.max_results is None or fetched < config.max_results:
-        page_size = config.page_size
-        if config.max_results is not None:
-            page_size = min(page_size, config.max_results - fetched)
-
-        params = {
-            "search_query": query,
-            "start": start,
-            "max_results": page_size,
-            "sortBy": "submittedDate",
-            "sortOrder": "ascending",
-        }
-
-        feed = _get_with_retries(params, config.max_retries)
-        entries = feed.entries
-        if not entries:
-            break
-
-        for entry in entries:
             paper = _parse_entry(entry)
             if paper is None:
                 logger.warning("Skipping entry with unexpected id format: %s", entry.get("id"))
                 continue
             if not _passes_keyword_filter(paper, config):
                 continue
+
             yield paper
-
-        fetched += len(entries)
-        start += len(entries)
-
-        if len(entries) < page_size:
-            break  # reached the last page
-
-        time.sleep(config.request_delay_seconds)
+            fetched += 1
 
 
-def _build_search_query(config: IngestionConfig) -> str:
-    """Combine two scope clauses: categories taken in full, and broader
-    categories filtered down to abstracts matching a software-dev keyword.
+def _scope_queries(config: IngestionConfig) -> list[str]:
+    """Build one search_query clause per full-scope category, plus one for
+    the keyword-filtered categories - kept separate (rather than OR'd into a
+    single query) so each stays under arXiv's deep-pagination wall on its
+    own. A cross-listed paper matching more than one clause is simply
+    fetched more than once; the raw store's upsert-by-arxiv_id absorbs that.
     """
-    scope_clauses = []
-
-    if config.categories:
-        scope_clauses.append(
-            "(" + " OR ".join(f"cat:{c}" for c in config.categories) + ")"
-        )
+    queries = [f"cat:{category}" for category in config.categories]
 
     if config.keyword_filtered_categories and config.keywords:
         cat_clause = "(" + " OR ".join(f"cat:{c}" for c in config.keyword_filtered_categories) + ")"
         keyword_clause = "(" + " OR ".join(f'abs:"{k}"' for k in config.keywords) + ")"
-        scope_clauses.append(f"({cat_clause} AND {keyword_clause})")
+        queries.append(f"{cat_clause} AND {keyword_clause}")
 
-    if not scope_clauses:
+    if not queries:
         raise ValueError("IngestionConfig must define at least one category scope")
 
-    scope = " OR ".join(scope_clauses)
-    start = datetime.strptime(config.start_date, "%Y-%m-%d").strftime("%Y%m%d%H%M%S")
-    return f"({scope}) AND submittedDate:[{start} TO 99991231235959]"
+    return queries
+
+
+def _fetch_scope_entries(scope_query: str, date_from: datetime, date_to: datetime, config: IngestionConfig):
+    """Paginate one scope query across [date_from, date_to).
+
+    Probes the window's total result count first (a cheap max_results=1
+    request) and bisects the date range up front when that total would need
+    start >= ARXIV_MAX_START to page through - rather than paginating partway
+    and bisecting reactively, which would re-fetch (and re-yield) whatever
+    was already pulled from the un-split window once it split.
+    """
+    if date_from >= date_to:
+        return
+
+    date_query = f"({scope_query}) AND submittedDate:[{_format_date(date_from)} TO {_format_date(date_to)}]"
+
+    probe = _request(date_query, start=0, max_results=1, config=config)
+    total = _total_results(probe)
+    if total == 0:
+        return
+
+    if total > ARXIV_MAX_START:
+        midpoint = date_from + (date_to - date_from) / 2
+        if midpoint <= date_from:
+            logger.warning(
+                "Cannot bisect further for %r in [%s, %s) (%d results) - some may be missed",
+                scope_query,
+                date_from,
+                date_to,
+                total,
+            )
+            return
+        yield from _fetch_scope_entries(scope_query, date_from, midpoint, config)
+        yield from _fetch_scope_entries(scope_query, midpoint, date_to, config)
+        return
+
+    start = 0
+    while True:
+        feed = _request(date_query, start=start, max_results=config.page_size, config=config)
+        entries = feed.entries
+        if not entries:
+            return
+
+        yield from entries
+
+        start += len(entries)
+        if len(entries) < config.page_size:
+            return  # reached the last page
+
+
+def _request(date_query: str, start: int, max_results: int, config: IngestionConfig):
+    params = {
+        "search_query": date_query,
+        "start": start,
+        "max_results": max_results,
+        "sortBy": "submittedDate",
+        "sortOrder": "ascending",
+    }
+    feed = _get_with_retries(params, config.max_retries)
+    time.sleep(config.request_delay_seconds)
+    return feed
+
+
+def _total_results(feed) -> int:
+    try:
+        return int(feed.feed.get("opensearch_totalresults", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _format_date(dt: datetime) -> str:
+    return dt.strftime("%Y%m%d%H%M%S")
 
 
 def _passes_keyword_filter(paper: PaperMetadata, config: IngestionConfig) -> bool:
