@@ -2,11 +2,8 @@ import argparse
 import logging
 from pathlib import Path
 
-from ingestion.arxiv_client import fetch_papers
 from ingestion.config import IngestionConfig
-from ingestion.normalize import normalize_paper
-from ingestion.normalized_store import NormalizedPaperStore
-from ingestion.store import RawPaperStore
+from ingestion.pipeline import run_fetch_stage, run_normalize_stage
 
 
 def _add_scope_args(parser: argparse.ArgumentParser) -> None:
@@ -40,48 +37,13 @@ def _run_fetch(args: argparse.Namespace) -> None:
     overrides = _config_overrides_from_args(args)
     overrides["max_results"] = args.max_results
     overrides["db_path"] = Path(args.db_path)
-    config = IngestionConfig(**overrides)
-
-    fetched_count = 0
-    with RawPaperStore(config.db_path) as store:
-        for paper in fetch_papers(config):
-            store.upsert(paper)
-            fetched_count += 1
-            if fetched_count % 50 == 0:
-                logging.info("Fetched %d papers so far...", fetched_count)
-
-        logging.info(
-            "Done. Fetched %d papers this run. Store now has %d papers.",
-            fetched_count,
-            store.count(),
-        )
+    run_fetch_stage(IngestionConfig(**overrides))
 
 
 def _run_normalize(args: argparse.Namespace) -> None:
     overrides = _config_overrides_from_args(args)
     overrides["db_path"] = Path(args.db_path)
-    config = IngestionConfig(**overrides)
-
-    kept, dropped = 0, 0
-    with RawPaperStore(config.db_path) as raw_store, NormalizedPaperStore(config.db_path) as norm_store:
-        # Materialize before writing: raw_store.all() is a live cursor, and
-        # a second connection to the same SQLite file can't commit writes
-        # while that read transaction is still open ("database is locked").
-        papers = list(raw_store.all())
-        for paper in papers:
-            normalized = normalize_paper(paper, config)
-            if normalized is None:
-                dropped += 1
-                continue
-            norm_store.upsert(normalized)
-            kept += 1
-
-        logging.info(
-            "Done. Normalized %d papers, dropped %d. Store now has %d normalized papers.",
-            kept,
-            dropped,
-            norm_store.count(),
-        )
+    run_normalize_stage(IngestionConfig(**overrides))
 
 
 def main() -> None:
