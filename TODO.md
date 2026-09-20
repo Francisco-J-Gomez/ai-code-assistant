@@ -37,6 +37,16 @@ first. Not blocking current progress — revisit when relevant.
   upfront approximations (~$0.12 for the full corpus), not measured from
   actual API responses.
 
+## CI/CD
+
+- `.github/workflows/ci.yml` runs unit + arXiv integration tests on every
+  PR/push to `main`, but **merges aren't actually blocked on it failing**:
+  GitHub's required-status-checks / branch protection (classic API and the
+  newer rulesets API both) needs either a public repo or GitHub Pro on the
+  free plan — this repo is private. Revisit if the repo goes public or the
+  account upgrades; until then, check the PR's CI status manually before
+  merging.
+
 ## Agent / serving side (not started)
 
 - `GROQ_API_KEY` and `TAVILY_API_KEY` are in `.env` but nothing uses them
