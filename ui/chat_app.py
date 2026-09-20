@@ -3,6 +3,7 @@
     .venv/bin/streamlit run ui/chat_app.py
 """
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -15,7 +16,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import streamlit as st
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv()  # local dev: reads .env, a no-op if it doesn't exist
+
+try:
+    # Streamlit Community Cloud: secrets set via the app's Secrets UI land
+    # in st.secrets (TOML), not necessarily os.environ - bridge them so the
+    # rest of this app (and everything in agent/, ingestion/) can keep
+    # reading os.environ either way. Raises StreamlitSecretNotFoundError
+    # locally when no .streamlit/secrets.toml exists, which is expected
+    # and fine since load_dotenv() already covered that case above.
+    for key, value in st.secrets.items():
+        os.environ.setdefault(key, str(value))
+except Exception:
+    pass
 
 from agent.config import AgentConfig
 from agent.graph import build_agent
