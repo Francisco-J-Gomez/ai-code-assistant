@@ -55,9 +55,12 @@ first. Not blocking current progress — revisit when relevant.
   (`openai/gpt-oss-120b`/`20b`) were evaluated and confirmed working with
   tool-calling, so it's a viable option to revisit later if cost/latency
   comparison against OpenAI ever becomes worth doing.
-- `TAVILY_API_KEY` is in `.env` but unused — web-search tool is explicitly
-  deferred past the MVP (single-tool: corpus search only), see
-  docs/agent-plan.md.
+- **Web search fallback decided: in scope for MVP**, not deferred —
+  `TAVILY_API_KEY` is used by a second tool (`web_search`, via
+  `langchain-tavily`'s ready-made `TavilySearch`), triggered when
+  `search_papers` finds nothing relevant. Confirmed working with a real
+  call. See docs/agent-plan.md for how the system prompt keeps this
+  scoped to AI/software-dev questions rather than a general web assistant.
 - `LANGSMITH_*` vars are in `.env` but tracing isn't wired into any code
   yet — wire in when building the agent, for visibility into
   retrieval + generation steps.

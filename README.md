@@ -23,15 +23,17 @@ Two independent systems, built and tested separately:
 |---|---|
 | Scraping vs. arXiv API | Use the official **arXiv API** — no HTML scraping. Clean metadata (title, abstract, authors, categories) for free; full text still needs PDF parsing. |
 | MVP scope | Start with **abstracts only**, narrower category filter (e.g. `cs.SE` + a slice of `cs.AI`/`cs.LG`) rather than the full corpus. Expand to full-text chunking later. |
-| Relevance gating | No separate classifier — retrieve, then let the **LLM decide** post-retrieval whether context is sufficient ("I don't have grounded info on this"). LLM choice still open. |
+| Relevance gating | No separate classifier — retrieve, then let the **LLM decide** post-retrieval whether context is sufficient. If not, fall back to a live web search (still scoped to AI/software-dev topics) before giving up and saying so honestly. |
 | Pipeline structure | Split ingestion (offline) from serving (online) from day one. |
 | Chunking strategy (MVP) | One chunk per paper = its abstract, behind a `ChunkerStrategy` interface. Full-text chunking strategy is still open — decide via benchmarks (see below) once full-text parsing exists. |
 | Embedding model | **OpenAI `text-embedding-3-small`** (1536-dim) — cheap (~$0.12 for the full corpus), fast, best LangChain support. Alternatives to benchmark later in [TODO.md](TODO.md). |
+| Agent LLM | **OpenAI `gpt-5-mini`** — single-provider stack (same account as embeddings); confirmed working with tool-calling. See [docs/agent-plan.md](docs/agent-plan.md). |
+| Web search fallback | **Tavily**, via `langchain-tavily`, as a second agent tool used only when the corpus has nothing relevant. |
 
 ## Open decisions
 
-- **LLM for generation / relevance gating** — not yet chosen.
 - **Full-text chunking strategy** — to be settled empirically (see Benchmarking below) once full-text parsing exists.
+- **Exact OpenAI model size** (`gpt-5` vs. `gpt-5-mini` vs. `gpt-5-nano`) — see [docs/agent-plan.md](docs/agent-plan.md).
 
 ## Ingestion pipeline (offline)
 
@@ -61,17 +63,27 @@ the full detailed design.
 
 ## Serving API (online, agentic)
 
-1. User submits a question via the API.
-2. Embed the query, retrieve top-k chunks from Pinecone.
-3. LLM evaluates retrieved context:
-   - Sufficient → answer grounded in the retrieved chunks, with citations
-     (paper title + link).
-   - Insufficient / out of scope → respond that there's no grounded info,
-     rather than hallucinating.
-4. Return answer + sources to the user.
-5. This is the first "agentic" decision point (accept/reject retrieved
-   context); more agent behavior (e.g. query rewriting, multi-hop retrieval)
-   can be layered on once the basic RAG loop works.
+**Status: planned, not yet built** — see
+[docs/agent-plan.md](docs/agent-plan.md) for the full design (verified
+against real, current LangChain/OpenAI/Tavily APIs before writing it).
+
+1. User submits a question via a Streamlit chat UI.
+2. A LangChain tool-calling agent (`langchain.agents.create_agent`,
+   OpenAI `gpt-5-mini`) decides whether to search the paper corpus.
+3. `search_papers` tool: embeds the query, retrieves top-k chunks from
+   Pinecone.
+   - Relevant results → answer grounded in the retrieved chunks, with
+     citations (paper title + link).
+   - Nothing relevant → falls back to a `web_search` tool (Tavily),
+     still scoped by the system prompt to AI/software-dev topics.
+     - Web results found → answer from them, clearly marked as
+       web-sourced rather than from the curated corpus.
+     - Still nothing relevant → says so honestly rather than
+       hallucinating.
+4. Return answer + sources (labeled by which tool they came from) to the user.
+5. This two-tool decision (corpus vs. web vs. neither) is the first real
+   "agentic" behavior; more (e.g. query rewriting, multi-hop retrieval)
+   can be layered on once this works.
 
 ## Benchmarking chunking strategies
 
@@ -231,8 +243,10 @@ Other options if you want something more visual:
 
 1. ~~Ingestion MVP: arXiv API fetch (metadata only, narrow categories) →
    embed abstracts → upsert to Pinecone.~~ Done.
-2. Serving MVP: query → retrieve → LLM answer with citations, or "not grounded"
-   fallback.
+2. **In progress** — Serving MVP: chat agent, corpus search → web search
+   fallback → honest "nothing found" as a last resort. Planned in
+   [docs/agent-plan.md](docs/agent-plan.md) (`rag-agent` branch).
 3. Chunking benchmarks: compare strategies once full-text parsing is added.
 4. Expand category/date coverage based on MVP learnings.
-5. Layer in agent behavior beyond the basic accept/reject retrieval gate.
+5. Layer in agent behavior beyond corpus-vs-web-vs-neither (e.g. query
+   rewriting, multi-hop retrieval, durable multi-session memory).
