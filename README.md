@@ -70,6 +70,35 @@ against real, current LangChain/OpenAI/Tavily APIs before writing it) and
 real OpenAI/Pinecone/Tavily, including by hand through the actual chat UI
 in a browser, not just described below.
 
+### Agent graph
+
+The actual compiled LangGraph structure (`agent.get_graph().draw_mermaid()`
+— not hand-drawn, this is what `agent/graph.py`'s `create_agent(...)`
+really builds):
+
+```mermaid
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	model(model)
+	tools(tools)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> model;
+	model -.-> __end__;
+	model -.-> tools;
+	tools -.-> model;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
+```
+
+`model` is the OpenAI LLM deciding what to do next; `tools` is a single
+node bundling both `search_papers` (Pinecone corpus) and `web_search`
+(Tavily) — the graph itself just loops model ↔ tools until the model
+stops requesting tool calls. Which tool gets called, in what order
+(corpus first, web only as a fallback), and when to give up and decline
+is **prompt-level behavior** (`SYSTEM_PROMPT` in `agent/graph.py`), not
+enforced by the graph's edges.
+
 1. User submits a question via a Streamlit chat UI.
 2. A LangChain tool-calling agent (`langchain.agents.create_agent`,
    OpenAI `gpt-5-mini`) decides whether to search the paper corpus.
