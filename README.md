@@ -25,12 +25,13 @@ Two independent systems, built and tested separately:
 | MVP scope | Start with **abstracts only**, narrower category filter (e.g. `cs.SE` + a slice of `cs.AI`/`cs.LG`) rather than the full corpus. Expand to full-text chunking later. |
 | Relevance gating | No separate classifier — retrieve, then let the **LLM decide** post-retrieval whether context is sufficient ("I don't have grounded info on this"). LLM choice still open. |
 | Pipeline structure | Split ingestion (offline) from serving (online) from day one. |
-| Chunking strategy | **Open** — decide via benchmarks (see below) rather than upfront. |
+| Chunking strategy (MVP) | One chunk per paper = its abstract, behind a `ChunkerStrategy` interface. Full-text chunking strategy is still open — decide via benchmarks (see below) once full-text parsing exists. |
+| Embedding model | **OpenAI `text-embedding-3-small`** (1536-dim) — cheap (~$0.12 for the full corpus), fast, best LangChain support. Alternatives to benchmark later in [TODO.md](TODO.md). |
 
 ## Open decisions
 
 - **LLM for generation / relevance gating** — not yet chosen.
-- **Chunking strategy** — to be settled empirically (see Benchmarking below).
+- **Full-text chunking strategy** — to be settled empirically (see Benchmarking below) once full-text parsing exists.
 
 ## Ingestion pipeline (offline)
 
@@ -86,8 +87,8 @@ qualitative answer grounding.
 
 ## Running the ingestion pipeline
 
-Status: fetch + normalize are implemented (`ingestion/`). Chunking, embedding,
-and Pinecone upsert are not built yet.
+Status: fetch, normalize, chunk/embed/upsert are all implemented
+(`ingestion/`). See [TODO.md](TODO.md) for deferred enhancements.
 
 ### Setup
 
@@ -96,7 +97,8 @@ python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt   # includes pytest
 ```
 
-No API keys needed for this stage — the arXiv API requires no auth.
+Fetch/normalize need no API keys (the arXiv API requires no auth). Step 3
+(embed) needs `OPENAI_API_KEY`/`PINECONE_API_KEY` — see that section below.
 
 ### Run the tests
 
@@ -141,6 +143,27 @@ papers, cleans title/abstract text, and writes the result to a separate
 `normalized_papers` table in the same file. Re-run anytime after a fetch —
 it's idempotent and safe to re-run after tweaking scope/keywords without
 re-fetching.
+
+### Step 3 — chunk, embed, and upsert to Pinecone
+
+Needs `OPENAI_API_KEY` and `PINECONE_API_KEY` (and optionally
+`PINECONE_INDEX_NAME`, default `ai-code-assistant`) in a `.env` file —
+copy `.env.example` and fill in your own keys; `.env` is gitignored.
+
+```bash
+# Smoke-test with a handful of papers before committing to a full run:
+.venv/bin/python -m ingestion.cli embed --limit 3
+
+# Full run:
+.venv/bin/python -m ingestion.cli embed
+```
+
+One chunk per paper (its abstract) for the MVP, embedded with OpenAI
+`text-embedding-3-small` (1536-dim) and upserted into a Pinecone index
+(created automatically on first run if it doesn't exist). Re-running skips
+any chunk whose text hasn't changed since the last run — tracked via a
+content hash in an `embedded_chunks` table in the same SQLite file — so
+it's both idempotent and cheap to re-run.
 
 ### Debugging tips
 
@@ -189,8 +212,8 @@ Other options if you want something more visual:
 
 ## Roadmap
 
-1. Ingestion MVP: arXiv API fetch (metadata only, narrow categories) → embed
-   abstracts → upsert to Pinecone.
+1. ~~Ingestion MVP: arXiv API fetch (metadata only, narrow categories) →
+   embed abstracts → upsert to Pinecone.~~ Done.
 2. Serving MVP: query → retrieve → LLM answer with citations, or "not grounded"
    fallback.
 3. Chunking benchmarks: compare strategies once full-text parsing is added.

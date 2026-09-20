@@ -1,9 +1,13 @@
 import argparse
 import logging
+import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from ingestion.config import IngestionConfig
-from ingestion.pipeline import run_fetch_stage, run_normalize_stage
+from ingestion.embedding_config import EmbeddingConfig
+from ingestion.pipeline import run_embed_stage, run_fetch_stage, run_normalize_stage
 
 
 def _add_scope_args(parser: argparse.ArgumentParser) -> None:
@@ -46,7 +50,23 @@ def _run_normalize(args: argparse.Namespace) -> None:
     run_normalize_stage(IngestionConfig(**overrides))
 
 
+def _run_embed(args: argparse.Namespace) -> None:
+    config = EmbeddingConfig(
+        embedding_model=args.embedding_model,
+        embedding_dimensions=args.embedding_dimensions,
+        embed_batch_size=args.embed_batch_size,
+        pinecone_index_name=args.pinecone_index,
+        pinecone_cloud=args.pinecone_cloud,
+        pinecone_region=args.pinecone_region,
+        db_path=Path(args.db_path),
+        limit=args.limit,
+    )
+    run_embed_stage(config)
+
+
 def main() -> None:
+    load_dotenv()  # before building the parser, so env-based defaults below can see it
+
     parser = argparse.ArgumentParser(description="arXiv ingestion pipeline.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -61,6 +81,22 @@ def main() -> None:
     _add_scope_args(normalize_parser)
     normalize_parser.add_argument("--db-path", default="data/papers.db")
 
+    embed_parser = subparsers.add_parser(
+        "embed", help="Chunk normalized papers, embed them, and upsert to Pinecone."
+    )
+    embed_parser.add_argument("--db-path", default="data/papers.db")
+    embed_parser.add_argument("--embedding-model", default="text-embedding-3-small")
+    embed_parser.add_argument("--embedding-dimensions", type=int, default=1536)
+    embed_parser.add_argument("--embed-batch-size", type=int, default=100)
+    embed_parser.add_argument(
+        "--pinecone-index", default=os.environ.get("PINECONE_INDEX_NAME", "ai-code-assistant")
+    )
+    embed_parser.add_argument("--pinecone-cloud", default="aws")
+    embed_parser.add_argument("--pinecone-region", default="us-east-1")
+    embed_parser.add_argument(
+        "--limit", type=int, default=None, help="Cap papers processed, for smoke-testing"
+    )
+
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -69,6 +105,8 @@ def main() -> None:
         _run_fetch(args)
     elif args.command == "normalize":
         _run_normalize(args)
+    elif args.command == "embed":
+        _run_embed(args)
 
 
 if __name__ == "__main__":

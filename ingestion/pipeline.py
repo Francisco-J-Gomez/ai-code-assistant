@@ -1,9 +1,15 @@
 import logging
 
 from ingestion.arxiv_client import fetch_papers
+from ingestion.chunking.abstract_chunker import AbstractChunker
+from ingestion.chunking.base import Chunk
 from ingestion.config import IngestionConfig
+from ingestion.embedding_cache import EmbeddingCacheStore
+from ingestion.embedding_config import EmbeddingConfig
+from ingestion.embeddings import Embedder
 from ingestion.normalize import normalize_paper
 from ingestion.normalized_store import NormalizedPaperStore
+from ingestion.pinecone_client import PineconeStore
 from ingestion.store import RawPaperStore
 
 logger = logging.getLogger(__name__)
@@ -50,3 +56,54 @@ def run_normalize_stage(config: IngestionConfig) -> tuple[int, int]:
             norm_store.count(),
         )
     return kept, dropped
+
+
+def run_embed_stage(embedding_config: EmbeddingConfig) -> tuple[int, int]:
+    """Chunk normalized papers, embed chunks whose text changed since the
+    last run, and upsert them to Pinecone. Returns (embedded, skipped_unchanged).
+    """
+    chunker = AbstractChunker()
+    embedder = Embedder(model=embedding_config.embedding_model)
+    pinecone_store = PineconeStore(
+        index_name=embedding_config.pinecone_index_name,
+        dimension=embedding_config.embedding_dimensions,
+        cloud=embedding_config.pinecone_cloud,
+        region=embedding_config.pinecone_region,
+    )
+
+    with NormalizedPaperStore(embedding_config.db_path) as norm_store:
+        papers = list(norm_store.all())  # see run_normalize_stage for why this can't stream
+    if embedding_config.limit is not None:
+        papers = papers[: embedding_config.limit]
+
+    pending: list[Chunk] = []
+    skipped = 0
+    with EmbeddingCacheStore(embedding_config.db_path) as cache:
+        for paper in papers:
+            for chunk in chunker.chunk(paper):
+                if cache.is_up_to_date(chunk.chunk_id, chunk.text):
+                    skipped += 1
+                else:
+                    pending.append(chunk)
+
+    embedded = 0
+    with EmbeddingCacheStore(embedding_config.db_path) as cache:
+        for batch in _batched(pending, embedding_config.embed_batch_size):
+            vectors = embedder.embed([c.text for c in batch])
+            pinecone_store.upsert(batch, vectors)
+            cache.mark_embedded_many([(c.chunk_id, c.text) for c in batch])
+            embedded += len(batch)
+            logger.info("Embedded %d/%d chunks so far...", embedded, len(pending))
+
+    logger.info(
+        "Done. Embedded %d chunks, skipped %d unchanged. Pinecone index now has %d vectors.",
+        embedded,
+        skipped,
+        pinecone_store.count(),
+    )
+    return embedded, skipped
+
+
+def _batched(items: list, batch_size: int):
+    for i in range(0, len(items), batch_size):
+        yield items[i : i + batch_size]

@@ -1,6 +1,7 @@
 import json
 import sqlite3
 from pathlib import Path
+from typing import Iterator
 
 from ingestion.models import PaperMetadata
 
@@ -73,6 +74,39 @@ class NormalizedPaperStore:
 
     def count(self) -> int:
         return self._conn.execute("SELECT COUNT(*) FROM normalized_papers").fetchone()[0]
+
+    def all(self) -> Iterator[PaperMetadata]:
+        cursor = self._conn.execute(
+            """
+            SELECT arxiv_id, version, title, abstract, authors, categories,
+                   primary_category, published, updated, pdf_url
+            FROM normalized_papers
+            """
+        )
+        for (
+            arxiv_id,
+            version,
+            title,
+            abstract,
+            authors_json,
+            categories_json,
+            primary_category,
+            published,
+            updated,
+            pdf_url,
+        ) in cursor:
+            yield PaperMetadata(
+                arxiv_id=arxiv_id,
+                version=version,
+                title=title,
+                abstract=abstract,
+                authors=json.loads(authors_json),
+                categories=json.loads(categories_json),
+                primary_category=primary_category,
+                published=published,
+                updated=updated,
+                pdf_url=pdf_url,
+            )
 
     def close(self) -> None:
         self._conn.close()
