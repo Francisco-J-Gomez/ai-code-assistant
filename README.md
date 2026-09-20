@@ -100,6 +100,27 @@ python3 -m venv .venv
 Fetch/normalize need no API keys (the arXiv API requires no auth). Step 3
 (embed) needs `OPENAI_API_KEY`/`PINECONE_API_KEY` — see that section below.
 
+### Quickstart
+
+Two phases: (1) download + standardize the dataset, (2) turn it into
+embeddings in Pinecone. Full detail on each command is below this.
+
+```bash
+# --- Phase 1: download the data and standardize it ---
+.venv/bin/python -m ingestion.cli fetch --db-path data/papers.db
+.venv/bin/python -m ingestion.cli normalize --db-path data/papers.db
+
+# --- Phase 2: create the embeddings ---
+# Copy .env.example -> .env and fill in OPENAI_API_KEY/PINECONE_API_KEY first.
+.venv/bin/python -m ingestion.cli embed --limit 3   # smoke test a few papers first
+.venv/bin/python -m ingestion.cli embed             # then the full run
+```
+
+After phase 2, check https://app.pinecone.io — open your index (name is
+whatever `PINECONE_INDEX_NAME` resolved to, default `ai-code-assistant`)
+and its dashboard shows the vector count and dimension directly; use the
+console's query/browse tool to inspect individual vectors and metadata.
+
 ### Run the tests
 
 ```bash
