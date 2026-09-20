@@ -34,6 +34,95 @@ from agent.config import AgentConfig
 from agent.graph import build_agent
 
 st.set_page_config(page_title="AI / Software-Dev Research Assistant", page_icon="📄")
+
+st.markdown(
+    """
+    <style>
+    html, body, [class*="css"], [data-testid="stAppViewContainer"] {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+            "SF Pro Text", "Helvetica Neue", Arial, sans-serif !important;
+    }
+
+    [data-testid="stMainBlockContainer"] {
+        max-width: 760px;
+        padding-top: 3.5rem;
+        padding-bottom: 7rem;
+    }
+
+    [data-testid="stHeading"] h1 {
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        color: #1d1d1f;
+    }
+
+    [data-testid="stCaptionContainer"] {
+        color: #6e6e73 !important;
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+
+    [data-testid="stChatMessage"] {
+        background-color: #ffffff;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 18px;
+        padding: 0.9rem 1.1rem;
+        margin-bottom: 0.85rem;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 4px 14px rgba(0, 0, 0, 0.035);
+    }
+
+    [data-testid="stChatMessageContent"] p {
+        color: #1d1d1f;
+        line-height: 1.55;
+    }
+
+    [data-testid="stChatInput"] {
+        border-radius: 26px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+        background-color: #ffffff;
+    }
+
+    [data-testid="stChatInput"]:focus-within {
+        border-color: #0071e3;
+        box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.15);
+    }
+
+    [data-testid="stChatInputTextArea"] {
+        color: #1d1d1f;
+    }
+
+    [data-testid="stChatInputSubmitButton"] {
+        background-color: #0071e3 !important;
+        border-radius: 999px !important;
+    }
+
+    [data-testid="stExpander"] {
+        border-radius: 14px;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+        background-color: #ffffff;
+    }
+
+    [data-testid="stChatMessageAvatarUser"] {
+        background-color: #1d1d1f !important;
+    }
+
+    [data-testid="stChatMessageAvatarAssistant"] {
+        background-color: #0071e3 !important;
+    }
+
+    a, a:visited {
+        color: #0071e3;
+        text-decoration: none;
+    }
+    a:hover {
+        text-decoration: underline;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 st.title("AI / Software-Dev Research Assistant")
 st.caption(
     "Grounded in a curated arXiv corpus of AI/software-engineering papers, "
