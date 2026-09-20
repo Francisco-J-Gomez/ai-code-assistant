@@ -118,6 +118,27 @@ st.markdown(
     a:hover {
         text-decoration: underline;
     }
+
+    .source-badge {
+        display: inline-block;
+        font-size: 0.78rem;
+        font-weight: 600;
+        padding: 0.25rem 0.7rem;
+        border-radius: 999px;
+        margin-bottom: 0.6rem;
+    }
+    .source-badge-corpus {
+        background-color: rgba(0, 113, 227, 0.1);
+        color: #0071e3;
+    }
+    .source-badge-web {
+        background-color: rgba(255, 149, 0, 0.12);
+        color: #c26a00;
+    }
+    .source-badge-none {
+        background-color: rgba(0, 0, 0, 0.06);
+        color: #6e6e73;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -141,6 +162,18 @@ if "message_count" not in st.session_state:
     # full accumulated thread history (result["messages"] is cumulative,
     # not just this turn's delta).
     st.session_state.message_count = 0
+
+
+def _start_new_chat() -> None:
+    # New thread_id is enough to give the checkpointer a blank slate for
+    # this conversation - no need to rebuild the agent/LLM connection.
+    st.session_state.history = []
+    st.session_state.message_count = 0
+    st.session_state.thread_id = str(uuid.uuid4())
+
+
+with st.sidebar:
+    st.button("🆕  New Chat", on_click=_start_new_chat, use_container_width=True)
 
 
 def _extract_sources(new_messages: list) -> list[dict]:
@@ -180,6 +213,31 @@ def _extract_sources(new_messages: list) -> list[dict]:
     return deduped
 
 
+def _classify_answer_source(new_messages: list) -> dict:
+    """Which tool actually fired this turn, not what the answer's prose
+    claims - search_papers always returns its top-k regardless of whether
+    the results are actually relevant, so "was a tool called" is the
+    reliable signal, not "did it return something non-empty". If
+    web_search fired at all, the agent judged the corpus insufficient and
+    escalated, regardless of what search_papers happened to return.
+    """
+    tool_names = {getattr(m, "name", None) for m in new_messages if getattr(m, "type", None) == "tool"}
+    if "tavily_search" in tool_names:
+        return {"icon": "🌐", "label": "Includes live web search", "kind": "web"}
+    if "search_papers" in tool_names:
+        return {"icon": "📄", "label": "Grounded in the paper corpus", "kind": "corpus"}
+    return {"icon": "❌", "label": "Not grounded — no relevant source found", "kind": "none"}
+
+
+def _render_badge(badge: dict | None) -> None:
+    if not badge:
+        return
+    st.markdown(
+        f'<span class="source-badge source-badge-{badge["kind"]}">{badge["icon"]} {badge["label"]}</span>',
+        unsafe_allow_html=True,
+    )
+
+
 def _render_sources(sources: list[dict]) -> None:
     if not sources:
         return
@@ -193,12 +251,13 @@ def _render_sources(sources: list[dict]) -> None:
 
 for turn in st.session_state.history:
     with st.chat_message(turn["role"]):
+        _render_badge(turn.get("badge"))
         st.markdown(turn["content"])
         _render_sources(turn.get("sources") or [])
 
 question = st.chat_input("Ask about AI or software-development research...")
 if question:
-    st.session_state.history.append({"role": "user", "content": question, "sources": None})
+    st.session_state.history.append({"role": "user", "content": question, "sources": None, "badge": None})
     with st.chat_message("user"):
         st.markdown(question)
 
@@ -214,8 +273,12 @@ if question:
 
         answer = result["messages"][-1].content
         sources = _extract_sources(new_messages)
+        badge = _classify_answer_source(new_messages)
 
+        _render_badge(badge)
         st.markdown(answer)
         _render_sources(sources)
 
-    st.session_state.history.append({"role": "assistant", "content": answer, "sources": sources})
+    st.session_state.history.append(
+        {"role": "assistant", "content": answer, "sources": sources, "badge": badge}
+    )
