@@ -1,8 +1,14 @@
 # Data Ingestion Pipeline — Step-by-Step Plan
 
-Scope: MVP ingestion of arXiv paper **abstracts** for `cs.SE` + a slice of
-`cs.AI`/`cs.LG`, since 2020, into Pinecone. Full-text ingestion and chunking
-benchmarks are explicitly deferred (see [README.md](../README.md)).
+**Status: implemented and run end-to-end** — ~30k papers fetched,
+normalized, embedded, and upserted to Pinecone. This doc is kept as the
+detailed design reference; see [README.md](../README.md) for exact
+commands to run it yourself.
+
+Scope: MVP ingestion of arXiv paper **abstracts** for `cs.SE` + `cs.PL` in
+full, plus `cs.AI`/`cs.LG`/`cs.CL` filtered to abstracts mentioning a
+software-dev term, since 2020, into Pinecone. Full-text ingestion and
+chunking benchmarks are explicitly deferred (see [README.md](../README.md)).
 
 ## Design principles
 
@@ -27,7 +33,9 @@ arXiv API → raw metadata store → filter/normalize → chunk → embed → up
 
 ### 1. Config & project setup
 
-- `.env` for secrets: `PINECONE_API_KEY`, `EMBEDDING_API_KEY`.
+- `.env` for secrets: `OPENAI_API_KEY`, `PINECONE_API_KEY` (plus
+  `GROQ_API_KEY`/`TAVILY_API_KEY`/`LANGSMITH_*` for the not-yet-built
+  serving/agent side — see `.env.example`).
 - `config.yaml` (or similar) for non-secret knobs: categories, date range,
   batch sizes, Pinecone index/namespace — keeps re-scoping (e.g. adding a
   category later) a config change, not a code change.
@@ -47,16 +55,30 @@ if a fetch run is interrupted.
 
 ### 4. arXiv fetcher
 
-- Query: `cat:cs.SE OR cat:cs.AI OR cat:cs.LG` (start narrow, widen later via
-  config), filtered by `submittedDate:[20200101 TO *]`.
-- Paginate with `start`/`max_results` (batches of ~100–1000); **respect
+- Each full-scope category (`cs.SE`, `cs.PL`) and the keyword-filtered
+  clause (`cs.AI`/`cs.LG`/`cs.CL` + software-dev terms) is queried
+  **separately** rather than OR'd into one query, filtered by
+  `submittedDate:[20200101 TO *]`.
+- **Real production issue found and fixed**: arXiv's API 500s on *any*
+  query once `start` reaches ~10000, regardless of query complexity (not
+  documented, found by hitting it during the full run). A scope query
+  whose result count would exceed that has its date range bisected
+  up front (probed via a cheap `max_results=1` request first) rather than
+  paginating into the wall — see `ARXIV_MAX_START` in
+  `ingestion/arxiv_client.py`.
+- Paginate with `start`/`max_results` (batches of ~100); **respect
   arXiv's rate-limit guidance (~1 request per 3s)** — this is a courtesy
   limit on a free public API, not a hard block, so violating it risks
   IP-level throttling.
 - Exponential backoff + capped retries on transient HTTP errors (5xx,
-  timeouts).
+  timeouts, DNS failures — survived an overnight network drop during the
+  real full run without manual intervention).
 - arXiv returns one entry per version — dedupe to the latest version per
   base id, but keep the version number in the stored record.
+- arXiv's `abs:"..."` field search doesn't enforce exact phrase matching
+  (confirmed: a nonsense reversed phrase still returned hundreds of hits),
+  so the keyword-filtered clause is re-checked client-side with a real
+  substring match rather than trusted as-is.
 - Write to the raw store incrementally per page/batch, upserted by
   `arxiv_id`, so an interrupted fetch resumes rather than restarts.
 
@@ -81,8 +103,9 @@ if a fetch run is interrupted.
 
 ### 7. Embedding
 
-- **Open decision**: embedding provider/model (affects Pinecone index
-  dimension — must be chosen before index creation).
+- **Decided**: OpenAI `text-embedding-3-small` (1536-dim) — cheap (~$0.12
+  for the full ~30k-paper corpus), fast, best LangChain support.
+  Alternatives to benchmark later, see [TODO.md](../TODO.md).
 - Batch requests (e.g. 100 chunks/call).
 - Cache embeddings keyed by a hash of chunk text, so unchanged chunks are
   never re-embedded on subsequent runs — this is the main cost control.
@@ -101,29 +124,45 @@ if a fetch run is interrupted.
 
 ### 9. Orchestration
 
-- CLI with separate subcommands (`fetch`, `embed`, `upsert`, or a `run` that
-  chains them) so each stage is independently runnable and debuggable.
-- A small state/checkpoint file (or a status column in the raw store) tracks
-  which papers are fetched vs. embedded vs. upserted, so `run` only processes
-  what's new.
+- CLI with separate subcommands (`fetch`, `normalize`, `embed`) so each
+  stage is independently runnable and debuggable.
+- **Implemented differently than originally planned**: no separate
+  state/checkpoint file. The SQLite tables themselves are the checkpoint —
+  `papers` (raw), `normalized_papers`, and `embedded_chunks` (content-hash
+  cache) each upsert by id, so re-running any stage naturally only (re-)
+  processes what's new or changed, without a separate tracking file.
 
 ### 10. Observability & testing
 
 - Structured logging per stage: counts in/out, counts skipped, errors.
-- Unit tests: fetcher (mocked HTTP), normalizer, chunker — no network calls.
-- Integration test against a small real arXiv query + a scratch Pinecone
-  namespace, marked slow/opt-in (not run by default).
-- Smoke test: full pipeline on ~10 papers before scaling to the full corpus.
+- Unit tests: fetcher (mocked HTTP), normalizer, chunker, embedder,
+  Pinecone client (all mocked) — no network calls; 50 tests total.
+- Integration test against the real arXiv API, opt-in via
+  `RUN_ARXIV_INTEGRATION_TESTS=1` (`tests/test_arxiv_integration.py`).
+  **Not yet done**: an equivalent opt-in test against real OpenAI/Pinecone
+  for the embed stage — verified manually instead so far (see TODO.md).
+- Smoke test: full pipeline run on a handful of papers (`--limit`/
+  `--max-results`) before scaling to the full corpus — done for every
+  stage before each full run.
 
 ### 11. Cost & rate-limit notes
 
 - arXiv API: free, no auth, but rate-limited by convention (~1 req/3s).
-- Embedding cost scales with corpus size — abstracts-only for `cs.SE` + a
-  slice of `cs.AI`/`cs.LG` since 2020 is a few thousand papers, so get a
-  rough count from a dry-run fetch before committing to an embedding budget.
-- Pinecone cost driven by vector count × dimension.
+- Embedding cost scales with corpus size — the actual full scope (`cs.SE` +
+  `cs.PL` in full, plus keyword-filtered `cs.AI`/`cs.LG`/`cs.CL`) since
+  2020 turned out to be **~30k papers**, not "a few thousand" as
+  originally guessed — real cost with `text-embedding-3-small` is ~$0.12
+  for the whole corpus, confirmed by an actual full run.
+- Pinecone cost driven by vector count × dimension. Free tier comfortably
+  covers 30k vectors at 1536-dim.
 
-## Proposed project layout
+## Project layout
+
+The layout below was the original proposal; the real `ingestion/`
+directory is the source of truth and has grown a few files beyond this
+(`normalize.py`, `normalized_store.py`, `pipeline.py`,
+`embedding_config.py`, `embedding_cache.py`, a fuller `tests/` — see the
+repo directly rather than expecting this block to stay in sync):
 
 ```
 ai-code-assistant/
@@ -148,20 +187,24 @@ ai-code-assistant/
   .env.example
 ```
 
-## Suggested implementation order
+## Implementation order
 
-1. `config.py` + `arxiv_client.py` + `store.py` — fetch `cs.SE` only into
+1. ✅ `config.py` + `arxiv_client.py` + `store.py` — fetch `cs.SE` only into
    the raw store, no embedding yet. Verify counts look sane.
-2. Extend to full MVP category/date scope.
-3. Chunking (abstract) + embedding, with the content-hash cache.
-4. Pinecone index creation + upsert; verify with a manual query.
-5. Wire the CLI, checkpointing, and logging end-to-end.
-6. Unit tests + smoke test.
-7. (Separate milestone) full-text parsing and chunking benchmarks.
+2. ✅ Extend to full MVP category/date scope.
+3. ✅ Chunking (abstract) + embedding, with the content-hash cache.
+4. ✅ Pinecone index creation + upsert; verified with a manual query and a
+   full ~30k-paper run.
+5. ✅ Wire the CLI and logging end-to-end (checkpointing via SQLite upserts
+   rather than a separate file — see step 9 above).
+6. ✅ Unit tests + smoke test (50 tests; opt-in real-API integration tests
+   for the fetch stage only so far).
+7. **Not started** (separate milestone): full-text parsing and chunking
+   benchmarks.
 
-## Open decisions before implementation starts
+## Decisions that were open before implementation, now resolved
 
-- Embedding provider/model (drives Pinecone index dimension).
-- Raw store engine: SQLite vs. JSONL (leaning SQLite for query/checkpoint
-  convenience).
-- Pinecone deployment: serverless vs. pod-based, and region.
+- ~~Embedding provider/model~~ → OpenAI `text-embedding-3-small`, 1536-dim.
+- ~~Raw store engine: SQLite vs. JSONL~~ → SQLite.
+- ~~Pinecone deployment: serverless vs. pod-based, and region~~ →
+  serverless, AWS `us-east-1` (configurable via `EmbeddingConfig`).

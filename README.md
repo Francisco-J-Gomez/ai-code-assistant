@@ -35,19 +35,29 @@ Two independent systems, built and tested separately:
 
 ## Ingestion pipeline (offline)
 
-1. **Fetch metadata** — query the arXiv API for `cs.SE`, `cs.AI`, `cs.LG` (start
-   narrow, expand later), filtered to submission date ≥ 2020-01-01. Store raw
-   metadata (id, title, abstract, authors, categories, published date, PDF URL).
+**Status: implemented** (`ingestion/`) — this is the design; for exact
+commands see [How to run it, step by step](#how-to-run-it-step-by-step)
+below, or [docs/data-ingestion-plan.md](docs/data-ingestion-plan.md) for
+the full detailed design.
+
+1. **Fetch metadata** — query the arXiv API for `cs.SE` + `cs.PL` in full,
+   plus `cs.AI`/`cs.LG`/`cs.CL` filtered to abstracts mentioning a
+   software-dev term (too large/generic to take in full — see
+   `ingestion/config.py`), filtered to submission date ≥ 2020-01-01. Store
+   raw metadata (id, title, abstract, authors, categories, published date,
+   PDF URL). Currently ~30k papers.
 2. **(Later) Fetch & parse full text** — download PDFs for papers that pass the
    MVP scope, extract text with PyMuPDF or GROBID. Deferred until abstract-only
-   pipeline works end-to-end.
-3. **Chunk** — split abstracts (and later, full text) into embeddable units.
-   Strategy TBD (see Benchmarking).
-4. **Embed** — generate vector embeddings for each chunk.
+   pipeline works end-to-end (it now does).
+3. **Chunk** — one chunk per paper (its abstract) for the MVP — see
+   "Decisions so far" above. Full-text chunking strategy is still open
+   (see Benchmarking) once full-text parsing exists.
+4. **Embed** — OpenAI `text-embedding-3-small`, batched.
 5. **Upsert to Pinecone** — store vectors with metadata needed for citations:
-   paper id, title, authors, section (once full-text), source URL.
+   paper id, title, authors, categories, published date, source URL.
 6. **Idempotency** — re-running ingestion should not duplicate vectors; key by
-   paper id (+ chunk index) so re-ingestion upserts in place.
+   paper id (+ chunk index) so re-ingestion upserts in place. A content-hash
+   cache also skips re-embedding chunks that haven't changed.
 
 ## Serving API (online, agentic)
 
@@ -85,56 +95,39 @@ qualitative answer grounding.
 - **Pinecone** — vector store.
 - **LLM** — provider/model TBD.
 
-## Running the ingestion pipeline
+## How to run it, step by step
 
 Status: fetch, normalize, chunk/embed/upsert are all implemented
-(`ingestion/`). See [TODO.md](TODO.md) for deferred enhancements.
+(`ingestion/`) and have been run end-to-end against the full ~30k-paper
+corpus. See [TODO.md](TODO.md) for deferred enhancements, and
+`ingestion/config.py` / `ingestion/embedding_config.py` for every knob
+mentioned below.
 
-### Setup
+### 0. Setup
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-dev.txt   # includes pytest
 ```
 
-Fetch/normalize need no API keys (the arXiv API requires no auth). Step 3
-(embed) needs `OPENAI_API_KEY`/`PINECONE_API_KEY` — see that section below.
+Fetch/normalize need no API keys (the arXiv API requires no auth). Step 4
+(embed) needs `OPENAI_API_KEY`/`PINECONE_API_KEY` — copy `.env.example` to
+`.env` and fill in your own keys before that step; `.env` is gitignored.
 
-### Quickstart
-
-Two phases: (1) download + standardize the dataset, (2) turn it into
-embeddings in Pinecone. Full detail on each command is below this.
-
-```bash
-# --- Phase 1: download the data and standardize it ---
-.venv/bin/python -m ingestion.cli fetch --db-path data/papers.db
-.venv/bin/python -m ingestion.cli normalize --db-path data/papers.db
-
-# --- Phase 2: create the embeddings ---
-# Copy .env.example -> .env and fill in OPENAI_API_KEY/PINECONE_API_KEY first.
-.venv/bin/python -m ingestion.cli embed --limit 3   # smoke test a few papers first
-.venv/bin/python -m ingestion.cli embed             # then the full run
-```
-
-After phase 2, check https://app.pinecone.io — open your index (name is
-whatever `PINECONE_INDEX_NAME` resolved to, default `ai-code-assistant`)
-and its dashboard shows the vector count and dimension directly; use the
-console's query/browse tool to inspect individual vectors and metadata.
-
-### Run the tests
+### 1. (Optional) Run the tests
 
 ```bash
 .venv/bin/python -m pytest -q
 ```
 
-This runs the mocked unit tests only (fast, no network). There's also a
-small integration suite that hits the real arXiv API, skipped by default:
+Mocked unit tests only — fast, no network. There's also a small
+integration suite that hits the real arXiv API, skipped by default:
 
 ```bash
 RUN_ARXIV_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/test_arxiv_integration.py -v
 ```
 
-### Step 1 — fetch raw metadata from arXiv
+### 2. Fetch raw metadata from arXiv
 
 ```bash
 # Small capped run, good for a first sanity check / debugging:
@@ -145,15 +138,14 @@ RUN_ARXIV_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/test_arxiv_integr
 ```
 
 Useful flags: `--categories`, `--keyword-categories`, `--keywords`,
-`--start-date`, `--max-results` (see `ingestion/config.py` for defaults).
-This is rate-limited to arXiv's courtesy ~3s/request, so an uncapped full
-run over ~33k papers will take a while — start with `--max-results` while
-debugging.
+`--start-date`, `--max-results`. Rate-limited to arXiv's courtesy
+~3s/request, so an uncapped full run over ~30k papers takes a while (tens
+of minutes) — start with `--max-results` while debugging.
 
 Data lands in the `papers` table of the SQLite file at `--db-path`
 (`data/` is gitignored — this is local scratch data, not committed).
 
-### Step 2 — filter & normalize
+### 3. Filter & normalize
 
 ```bash
 .venv/bin/python -m ingestion.cli normalize --db-path data/papers.db
@@ -165,26 +157,30 @@ papers, cleans title/abstract text, and writes the result to a separate
 it's idempotent and safe to re-run after tweaking scope/keywords without
 re-fetching.
 
-### Step 3 — chunk, embed, and upsert to Pinecone
-
-Needs `OPENAI_API_KEY` and `PINECONE_API_KEY` (and optionally
-`PINECONE_INDEX_NAME`, default `ai-code-assistant`) in a `.env` file —
-copy `.env.example` and fill in your own keys; `.env` is gitignored.
+### 4. Chunk, embed, and upsert to Pinecone
 
 ```bash
 # Smoke-test with a handful of papers before committing to a full run:
 .venv/bin/python -m ingestion.cli embed --limit 3
 
-# Full run:
+# Full run (~30k papers, a few minutes):
 .venv/bin/python -m ingestion.cli embed
 ```
 
 One chunk per paper (its abstract) for the MVP, embedded with OpenAI
 `text-embedding-3-small` (1536-dim) and upserted into a Pinecone index
-(created automatically on first run if it doesn't exist). Re-running skips
-any chunk whose text hasn't changed since the last run — tracked via a
-content hash in an `embedded_chunks` table in the same SQLite file — so
-it's both idempotent and cheap to re-run.
+(created automatically on first run if it doesn't exist, named whatever
+`PINECONE_INDEX_NAME` resolves to, default `ai-code-assistant`).
+Re-running skips any chunk whose text hasn't changed since the last run —
+tracked via a content hash in an `embedded_chunks` table in the same
+SQLite file — so it's both idempotent and cheap to re-run.
+
+### 5. Verify it landed in Pinecone
+
+Check https://app.pinecone.io — open your index and its dashboard shows
+the vector count and dimension directly (should match the normalized
+paper count and 1536); use the console's query/browse tool to inspect
+individual vectors and metadata.
 
 ### Debugging tips
 
