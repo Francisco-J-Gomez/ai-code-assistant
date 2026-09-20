@@ -7,3 +7,4 @@ langchain>=1.4
 langgraph>=1.2
 langchain-openai>=1.6
 langchain-tavily>=0.2
+streamlit>=1.60
