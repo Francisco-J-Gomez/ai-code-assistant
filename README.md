@@ -104,6 +104,13 @@ No API keys needed for this stage — the arXiv API requires no auth.
 .venv/bin/python -m pytest -q
 ```
 
+This runs the mocked unit tests only (fast, no network). There's also a
+small integration suite that hits the real arXiv API, skipped by default:
+
+```bash
+RUN_ARXIV_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/test_arxiv_integration.py -v
+```
+
 ### Step 1 — fetch raw metadata from arXiv
 
 ```bash
