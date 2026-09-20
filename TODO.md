@@ -47,12 +47,17 @@ first. Not blocking current progress — revisit when relevant.
   account upgrades; until then, check the PR's CI status manually before
   merging.
 
-## Agent / serving side (not started)
+## Agent / serving side (in progress, see docs/agent-plan.md)
 
-- `GROQ_API_KEY` and `TAVILY_API_KEY` are in `.env` but nothing uses them
-  yet — prep for the LLM + tool-use side once ingestion is done.
+- **LLM provider decided: OpenAI-only** (`gpt-5-mini` default), for a
+  single-provider stack (same account/key already used for embeddings).
+  `GROQ_API_KEY` in `.env` is unused as a result — Groq's current models
+  (`openai/gpt-oss-120b`/`20b`) were evaluated and confirmed working with
+  tool-calling, so it's a viable option to revisit later if cost/latency
+  comparison against OpenAI ever becomes worth doing.
+- `TAVILY_API_KEY` is in `.env` but unused — web-search tool is explicitly
+  deferred past the MVP (single-tool: corpus search only), see
+  docs/agent-plan.md.
 - `LANGSMITH_*` vars are in `.env` but tracing isn't wired into any code
-  yet — wire in when building the LangChain retrieval chain/agent, for
-  visibility into retrieval + generation steps.
-- LLM choice for the relevance-gating/generation step is still open (see
-  README.md "Open decisions").
+  yet — wire in when building the agent, for visibility into
+  retrieval + generation steps.

@@ -29,12 +29,19 @@ half of the project (see [README.md](../README.md) "Serving API
 
 ```
 User question (Streamlit chat)
-  -> LangChain agent (langchain.agents.create_agent, Groq LLM)
+  -> LangChain agent (langchain.agents.create_agent, OpenAI LLM)
        -> tool: search_papers(query) -> embeds query, queries Pinecone top-k
        -> LLM synthesizes an answer from returned chunks, with citations
        -> if nothing relevant came back: says so explicitly
   -> answer + sources rendered in the chat UI
 ```
+
+Single-provider by design: OpenAI for both embeddings (already decided,
+`text-embedding-3-small`) and the agent LLM — one API key, one bill, no
+second provider account to manage. (Groq was evaluated as an alternative
+and its models confirmed working with tool-calling, but OpenAI-only is
+simpler and was the explicit choice — see TODO.md if Groq/other providers
+are ever worth revisiting, e.g. for cost or latency comparison.)
 
 ## Verified before writing this plan
 
@@ -45,24 +52,16 @@ Checked directly rather than assumed, since APIs/models drift fast:
   checkpointer=...)` — built on LangGraph underneath, this is the modern
   entry point (vs. reaching into `langgraph.prebuilt.create_react_agent`
   directly, which still works but is the lower-level API).
-- **Groq's model lineup has changed** from the once-standard
-  `llama-3.x-*` names. Current models confirmed via a real call to
-  `GET /openai/v1/models`: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`,
-  `groq/compound` / `groq/compound-mini` (Groq's own agentic systems with
-  *built-in* server-side web search/code execution — not used here, since
-  we want to drive tool-calling ourselves through LangChain for the
-  learning goal, not delegate it to Groq's own agent).
-- **Tool-calling confirmed working** for `openai/gpt-oss-120b` and
-  `openai/gpt-oss-20b` via `ChatGroq(...).bind_tools([...])` with a real
-  API call — both correctly returned a structured tool call.
-- **`langchain-openai` and `langchain-pinecone` fail to install** in this
-  environment: they pull in `numpy`, which has no prebuilt wheel for
-  Python 3.14 yet and no C++ compiler is available here to build it from
-  source. This is actually fine — we don't need either package, since the
-  retrieval tool reuses `ingestion.embeddings.Embedder` (raw `openai` SDK)
-  and `ingestion.pinecone_client.PineconeStore` (raw `pinecone` SDK)
-  directly, same as the ingestion side already does.
-- **`langchain`, `langgraph`, `langchain-groq`, `langchain-tavily`,
+- **`langchain-openai` installs cleanly** here — no numpy dependency at
+  all (it needs `tiktoken`, which has a Python 3.14 wheel). The earlier
+  numpy/no-compiler install failure was from `langchain-pinecone`
+  specifically, not `langchain-openai` — and we don't need
+  `langchain-pinecone` anyway, since the retrieval tool reuses
+  `ingestion.pinecone_client.PineconeStore` (raw `pinecone` SDK) directly.
+- **Current OpenAI models confirmed working with tool-calling** via a
+  real `ChatOpenAI(...).bind_tools([...])` call: `gpt-5`, `gpt-5-mini`,
+  `gpt-5-nano`, plus the still-available `gpt-4.1-mini`/`gpt-4o-mini`.
+- **`langchain`, `langgraph`, `langchain-openai`, `langchain-tavily`,
   `streamlit`** all install cleanly (no numpy dependency).
 
 ## Steps
@@ -70,11 +69,11 @@ Checked directly rather than assumed, since APIs/models drift fast:
 ### 1. Config
 
 New `AgentConfig` dataclass (mirrors `IngestionConfig`/`EmbeddingConfig`):
-`llm_model` (default `openai/gpt-oss-120b`), `llm_temperature` (default
-0, factual/grounded answers over creative ones), `retrieval_top_k`
-(default 5), `embedding_model`/`embedding_dimensions` (must match the
-ingestion side — reuse `EmbeddingConfig`'s defaults rather than
-duplicating), `pinecone_index_name`.
+`llm_model` (default `gpt-5-mini`), `llm_temperature` (default 0,
+factual/grounded answers over creative ones), `retrieval_top_k` (default
+5), `embedding_model`/`embedding_dimensions` (must match the ingestion
+side — reuse `EmbeddingConfig`'s defaults rather than duplicating),
+`pinecone_index_name`.
 
 ### 2. Retrieval tool
 
@@ -93,7 +92,7 @@ duplicating), `pinecone_index_name`.
 
 ### 3. Agent
 
-- `langchain.agents.create_agent(model=ChatGroq(...), tools=[search_papers],
+- `langchain.agents.create_agent(model=ChatOpenAI(...), tools=[search_papers],
   system_prompt=..., checkpointer=InMemorySaver())`.
 - System prompt instructs: always search before answering questions about
   AI/software-development research; answer only from what the tool
@@ -134,7 +133,7 @@ up in the LangSmith UI after the first real run.
 ### 7. Testing
 
 - Unit tests: retrieval tool (mocked), config defaults.
-- Opt-in integration test: real Groq + real Pinecone, ask a question
+- Opt-in integration test: real OpenAI + real Pinecone, ask a question
   whose answer is known to come from a specific paper in the corpus,
   assert that paper's id appears in the tool-call results and/or the
   answer.
@@ -173,9 +172,10 @@ ai-code-assistant/
 
 ## Open decisions to confirm before implementation
 
-- **Groq model**: `openai/gpt-oss-120b` (larger, better quality) vs.
-  `openai/gpt-oss-20b` (faster/cheaper) as the default — both confirmed
-  working with tool-calling.
+- **OpenAI model**: `gpt-5-mini` (recommended default — good
+  quality/cost balance) vs. `gpt-5` (best quality, pricier) vs.
+  `gpt-5-nano` (cheapest/fastest) — all three confirmed working with
+  tool-calling.
 - **Out-of-corpus fallback behavior**: refuse outright ("I don't have
   grounded info on this") vs. offer a clearly-labeled general-knowledge
   answer anyway. The README's existing decision leans toward the former,
