@@ -25,28 +25,39 @@ Two independent systems, built and tested separately:
 | MVP scope | Start with **abstracts only**, narrower category filter (e.g. `cs.SE` + a slice of `cs.AI`/`cs.LG`) rather than the full corpus. Expand to full-text chunking later. |
 | Relevance gating | No separate classifier — retrieve, then let the **LLM decide** post-retrieval whether context is sufficient ("I don't have grounded info on this"). LLM choice still open. |
 | Pipeline structure | Split ingestion (offline) from serving (online) from day one. |
-| Chunking strategy | **Open** — decide via benchmarks (see below) rather than upfront. |
+| Chunking strategy (MVP) | One chunk per paper = its abstract, behind a `ChunkerStrategy` interface. Full-text chunking strategy is still open — decide via benchmarks (see below) once full-text parsing exists. |
+| Embedding model | **OpenAI `text-embedding-3-small`** (1536-dim) — cheap (~$0.12 for the full corpus), fast, best LangChain support. Alternatives to benchmark later in [TODO.md](TODO.md). |
 
 ## Open decisions
 
 - **LLM for generation / relevance gating** — not yet chosen.
-- **Chunking strategy** — to be settled empirically (see Benchmarking below).
+- **Full-text chunking strategy** — to be settled empirically (see Benchmarking below) once full-text parsing exists.
 
 ## Ingestion pipeline (offline)
 
-1. **Fetch metadata** — query the arXiv API for `cs.SE`, `cs.AI`, `cs.LG` (start
-   narrow, expand later), filtered to submission date ≥ 2020-01-01. Store raw
-   metadata (id, title, abstract, authors, categories, published date, PDF URL).
+**Status: implemented** (`ingestion/`) — this is the design; for exact
+commands see [How to run it, step by step](#how-to-run-it-step-by-step)
+below, or [docs/data-ingestion-plan.md](docs/data-ingestion-plan.md) for
+the full detailed design.
+
+1. **Fetch metadata** — query the arXiv API for `cs.SE` + `cs.PL` in full,
+   plus `cs.AI`/`cs.LG`/`cs.CL` filtered to abstracts mentioning a
+   software-dev term (too large/generic to take in full — see
+   `ingestion/config.py`), filtered to submission date ≥ 2020-01-01. Store
+   raw metadata (id, title, abstract, authors, categories, published date,
+   PDF URL). Currently ~30k papers.
 2. **(Later) Fetch & parse full text** — download PDFs for papers that pass the
    MVP scope, extract text with PyMuPDF or GROBID. Deferred until abstract-only
-   pipeline works end-to-end.
-3. **Chunk** — split abstracts (and later, full text) into embeddable units.
-   Strategy TBD (see Benchmarking).
-4. **Embed** — generate vector embeddings for each chunk.
+   pipeline works end-to-end (it now does).
+3. **Chunk** — one chunk per paper (its abstract) for the MVP — see
+   "Decisions so far" above. Full-text chunking strategy is still open
+   (see Benchmarking) once full-text parsing exists.
+4. **Embed** — OpenAI `text-embedding-3-small`, batched.
 5. **Upsert to Pinecone** — store vectors with metadata needed for citations:
-   paper id, title, authors, section (once full-text), source URL.
+   paper id, title, authors, categories, published date, source URL.
 6. **Idempotency** — re-running ingestion should not duplicate vectors; key by
-   paper id (+ chunk index) so re-ingestion upserts in place.
+   paper id (+ chunk index) so re-ingestion upserts in place. A content-hash
+   cache also skips re-embedding chunks that haven't changed.
 
 ## Serving API (online, agentic)
 
@@ -84,10 +95,142 @@ qualitative answer grounding.
 - **Pinecone** — vector store.
 - **LLM** — provider/model TBD.
 
+## How to run it, step by step
+
+Status: fetch, normalize, chunk/embed/upsert are all implemented
+(`ingestion/`) and have been run end-to-end against the full ~30k-paper
+corpus. See [TODO.md](TODO.md) for deferred enhancements, and
+`ingestion/config.py` / `ingestion/embedding_config.py` for every knob
+mentioned below.
+
+### 0. Setup
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt   # includes pytest
+```
+
+Fetch/normalize need no API keys (the arXiv API requires no auth). Step 4
+(embed) needs `OPENAI_API_KEY`/`PINECONE_API_KEY` — copy `.env.example` to
+`.env` and fill in your own keys before that step; `.env` is gitignored.
+
+### 1. (Optional) Run the tests
+
+```bash
+.venv/bin/python -m pytest -q
+```
+
+Mocked unit tests only — fast, no network. There's also a small
+integration suite that hits the real arXiv API, skipped by default:
+
+```bash
+RUN_ARXIV_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/test_arxiv_integration.py -v
+```
+
+### 2. Fetch raw metadata from arXiv
+
+```bash
+# Small capped run, good for a first sanity check / debugging:
+.venv/bin/python -m ingestion.cli fetch --max-results 15 --db-path data/papers.db
+
+# Full scope (cs.SE + cs.PL, plus keyword-filtered cs.AI/cs.LG/cs.CL, since 2020-01-01):
+.venv/bin/python -m ingestion.cli fetch --db-path data/papers.db
+```
+
+Useful flags: `--categories`, `--keyword-categories`, `--keywords`,
+`--start-date`, `--max-results`. Rate-limited to arXiv's courtesy
+~3s/request, so an uncapped full run over ~30k papers takes a while (tens
+of minutes) — start with `--max-results` while debugging.
+
+Data lands in the `papers` table of the SQLite file at `--db-path`
+(`data/` is gitignored — this is local scratch data, not committed).
+
+### 3. Filter & normalize
+
+```bash
+.venv/bin/python -m ingestion.cli normalize --db-path data/papers.db
+```
+
+Reads everything in the raw store, drops out-of-scope/withdrawn/malformed
+papers, cleans title/abstract text, and writes the result to a separate
+`normalized_papers` table in the same file. Re-run anytime after a fetch —
+it's idempotent and safe to re-run after tweaking scope/keywords without
+re-fetching.
+
+### 4. Chunk, embed, and upsert to Pinecone
+
+```bash
+# Smoke-test with a handful of papers before committing to a full run:
+.venv/bin/python -m ingestion.cli embed --limit 3
+
+# Full run (~30k papers, a few minutes):
+.venv/bin/python -m ingestion.cli embed
+```
+
+One chunk per paper (its abstract) for the MVP, embedded with OpenAI
+`text-embedding-3-small` (1536-dim) and upserted into a Pinecone index
+(created automatically on first run if it doesn't exist, named whatever
+`PINECONE_INDEX_NAME` resolves to, default `ai-code-assistant`).
+Re-running skips any chunk whose text hasn't changed since the last run —
+tracked via a content hash in an `embedded_chunks` table in the same
+SQLite file — so it's both idempotent and cheap to re-run.
+
+### 5. Verify it landed in Pinecone
+
+Check https://app.pinecone.io — open your index and its dashboard shows
+the vector count and dimension directly (should match the normalized
+paper count and 1536); use the console's query/browse tool to inspect
+individual vectors and metadata.
+
+### Debugging tips
+
+- Both CLI commands log counts (`Fetched N papers`, `Normalized N, dropped
+  N`) — a big gap between fetched and normalized counts is worth checking
+  with `scripts/inspect_db.py`.
+- Run `fetch` with a small `--max-results` first; only drop the cap once a
+  small batch looks right end-to-end.
+- Logging is INFO by default; category/date/withdrawn drops during
+  `normalize` log at DEBUG/INFO — see `ingestion/normalize.py` if you need
+  to see exactly why a specific paper was dropped.
+
+## Visualizing the dataset locally
+
+There's no `sqlite3` CLI or GUI browser installed in this environment (and
+installing one needs `sudo`, which isn't available non-interactively here),
+so `scripts/inspect_db.py` is a small stdlib-only tool for looking at the
+data without extra setup:
+
+```bash
+# Row counts, published-date range, and category breakdown for both tables:
+.venv/bin/python scripts/inspect_db.py summary
+
+# Most recent N rows (default: normalized table):
+.venv/bin/python scripts/inspect_db.py sample --table normalized --limit 20
+.venv/bin/python scripts/inspect_db.py sample --table raw --limit 20
+
+# Full-text-ish search over title/abstract:
+.venv/bin/python scripts/inspect_db.py search "program repair" --table normalized
+```
+
+Other options if you want something more visual:
+
+- **DB Browser for SQLite** (GUI, spreadsheet-like) — not installed here;
+  `flatpak install flathub io.github.sqlitebrowser.sqlitebrowser` or your
+  distro's package manager if you want it locally.
+- **pandas in a notebook/REPL** for quick stats or plots:
+  ```python
+  import sqlite3, pandas as pd
+  conn = sqlite3.connect("data/papers.db")
+  df = pd.read_sql("SELECT * FROM normalized_papers", conn)
+  df["primary_category"].value_counts()
+  ```
+  (`pip install pandas` — not in requirements.txt, since it's only needed
+  for ad hoc exploration, not the pipeline itself.)
+
 ## Roadmap
 
-1. Ingestion MVP: arXiv API fetch (metadata only, narrow categories) → embed
-   abstracts → upsert to Pinecone.
+1. ~~Ingestion MVP: arXiv API fetch (metadata only, narrow categories) →
+   embed abstracts → upsert to Pinecone.~~ Done.
 2. Serving MVP: query → retrieve → LLM answer with citations, or "not grounded"
    fallback.
 3. Chunking benchmarks: compare strategies once full-text parsing is added.
