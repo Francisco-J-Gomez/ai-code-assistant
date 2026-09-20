@@ -22,10 +22,24 @@ def make_chunk(**overrides) -> Chunk:
     return Chunk(**defaults)
 
 
+class _FakeScoredVector:
+    def __init__(self, id, score, metadata):
+        self.id = id
+        self.score = score
+        self.metadata = metadata
+
+
+class _FakeQueryResponse:
+    def __init__(self, matches):
+        self.matches = matches
+
+
 class _FakeIndexHandle:
     def __init__(self, name):
         self.name = name
         self.upserted_batches = []
+        self.query_calls = []
+        self.matches_to_return = []
 
     def upsert(self, vectors):
         self.upserted_batches.append(vectors)
@@ -33,6 +47,10 @@ class _FakeIndexHandle:
     def describe_index_stats(self):
         total = sum(len(batch) for batch in self.upserted_batches)
         return type("Stats", (), {"total_vector_count": total})()
+
+    def query(self, vector, top_k, include_metadata=False):
+        self.query_calls.append({"vector": vector, "top_k": top_k, "include_metadata": include_metadata})
+        return _FakeQueryResponse(self.matches_to_return)
 
 
 class _FakeIndexList:
@@ -122,3 +140,30 @@ def test_count_reflects_upserted_vectors(monkeypatch):
     store.upsert([make_chunk()], [[0.1, 0.2, 0.3]])
 
     assert store.count() == 1
+
+
+def test_query_returns_plain_dicts_with_score_and_metadata(monkeypatch):
+    store, fake_client = _make_store(monkeypatch)
+    index_handle = fake_client.Index("test-index")
+    index_handle.matches_to_return = [
+        _FakeScoredVector(id="2301.12345:0", score=0.9, metadata={"title": "A Paper", "arxiv_id": "2301.12345"}),
+        _FakeScoredVector(id="2301.99999:0", score=0.5, metadata={"title": "Another", "arxiv_id": "2301.99999"}),
+    ]
+
+    results = store.query([0.1, 0.2, 0.3], top_k=2)
+
+    assert results == [
+        {"chunk_id": "2301.12345:0", "score": 0.9, "title": "A Paper", "arxiv_id": "2301.12345"},
+        {"chunk_id": "2301.99999:0", "score": 0.5, "title": "Another", "arxiv_id": "2301.99999"},
+    ]
+    assert index_handle.query_calls == [{"vector": [0.1, 0.2, 0.3], "top_k": 2, "include_metadata": True}]
+
+
+def test_query_handles_missing_metadata(monkeypatch):
+    store, fake_client = _make_store(monkeypatch)
+    index_handle = fake_client.Index("test-index")
+    index_handle.matches_to_return = [_FakeScoredVector(id="x:0", score=0.1, metadata=None)]
+
+    results = store.query([0.0], top_k=1)
+
+    assert results == [{"chunk_id": "x:0", "score": 0.1}]

@@ -67,3 +67,16 @@ class PineconeStore:
 
     def count(self) -> int:
         return self._index.describe_index_stats().total_vector_count
+
+    def query(self, vector: Sequence[float], top_k: int) -> list[dict]:
+        """Top-k nearest chunks to `vector`, most similar first.
+
+        Returns plain dicts (chunk_id, score, plus every metadata field
+        upsert() wrote) rather than the SDK's ScoredVector, so callers
+        (e.g. the agent's retrieval tool) don't need a Pinecone import.
+        """
+        response = self._index.query(vector=list(vector), top_k=top_k, include_metadata=True)
+        return [
+            {"chunk_id": match.id, "score": match.score, **(match.metadata or {})}
+            for match in response.matches
+        ]
