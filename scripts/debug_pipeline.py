@@ -22,7 +22,13 @@ in .env and spends real (if tiny) money - flip it on once those are set.
 """
 import logging
 import os
+import sys
 from pathlib import Path
+
+# Running this directly (not via PyCharm, which adds the content root to
+# PYTHONPATH itself) sets sys.path[0] to scripts/, not the project root -
+# `import ingestion` fails without this, regardless of the cwd it's run from.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
 

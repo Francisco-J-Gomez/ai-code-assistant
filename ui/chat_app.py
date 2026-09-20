@@ -1,0 +1,119 @@
+"""Streamlit chat UI for the RAG agent. Run with:
+
+    .venv/bin/streamlit run ui/chat_app.py
+"""
+import json
+import sys
+import uuid
+from pathlib import Path
+
+# `streamlit run ui/chat_app.py` sets sys.path[0] to this file's own
+# directory (ui/), not the project root - `import agent` fails without this,
+# regardless of the cwd the command was launched from.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from agent.config import AgentConfig
+from agent.graph import build_agent
+
+st.set_page_config(page_title="AI / Software-Dev Research Assistant", page_icon="📄")
+st.title("AI / Software-Dev Research Assistant")
+st.caption(
+    "Grounded in a curated arXiv corpus of AI/software-engineering papers, "
+    "with a live web search fallback when the corpus doesn't cover a question."
+)
+
+if "agent" not in st.session_state:
+    st.session_state.agent = build_agent(AgentConfig())
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = str(uuid.uuid4())
+if "history" not in st.session_state:
+    st.session_state.history = []  # [{"role", "content", "sources"}]
+if "message_count" not in st.session_state:
+    # Tracks how many messages the agent's checkpointed state held after the
+    # last turn, so a new turn's tool-call results can be isolated from the
+    # full accumulated thread history (result["messages"] is cumulative,
+    # not just this turn's delta).
+    st.session_state.message_count = 0
+
+
+def _extract_sources(new_messages: list) -> list[dict]:
+    sources = []
+    for message in new_messages:
+        if getattr(message, "type", None) != "tool":
+            continue
+        try:
+            payload = json.loads(message.content)
+        except (TypeError, ValueError):
+            continue
+
+        if message.name == "search_papers":
+            for item in payload:
+                sources.append(
+                    {
+                        "kind": "corpus",
+                        "title": item.get("title"),
+                        "url": item.get("source_url"),
+                        "arxiv_id": item.get("arxiv_id"),
+                    }
+                )
+        elif message.name == "tavily_search":
+            for item in payload.get("results", []):
+                sources.append({"kind": "web", "title": item.get("title"), "url": item.get("url")})
+
+    # De-duplicate by url: the agent sometimes calls search_papers more
+    # than once per turn (e.g. retrying with a refined query), which can
+    # surface the same paper twice - seen in practice, not hypothetical.
+    seen_urls = set()
+    deduped = []
+    for source in sources:
+        if source["url"] in seen_urls:
+            continue
+        seen_urls.add(source["url"])
+        deduped.append(source)
+    return deduped
+
+
+def _render_sources(sources: list[dict]) -> None:
+    if not sources:
+        return
+    with st.expander(f"Sources ({len(sources)})"):
+        for source in sources:
+            if source["kind"] == "corpus":
+                st.markdown(f"📄 [{source['title']} ({source['arxiv_id']})]({source['url']})")
+            else:
+                st.markdown(f"🌐 [{source['title']}]({source['url']})")
+
+
+for turn in st.session_state.history:
+    with st.chat_message(turn["role"]):
+        st.markdown(turn["content"])
+        _render_sources(turn.get("sources") or [])
+
+question = st.chat_input("Ask about AI or software-development research...")
+if question:
+    st.session_state.history.append({"role": "user", "content": question, "sources": None})
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            result = st.session_state.agent.invoke(
+                {"messages": [{"role": "user", "content": question}]},
+                config={"configurable": {"thread_id": st.session_state.thread_id}},
+            )
+
+        new_messages = result["messages"][st.session_state.message_count :]
+        st.session_state.message_count = len(result["messages"])
+
+        answer = result["messages"][-1].content
+        sources = _extract_sources(new_messages)
+
+        st.markdown(answer)
+        _render_sources(sources)
+
+    st.session_state.history.append({"role": "assistant", "content": answer, "sources": sources})
