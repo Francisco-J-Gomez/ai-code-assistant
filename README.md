@@ -63,9 +63,12 @@ the full detailed design.
 
 ## Serving API (online, agentic)
 
-**Status: planned, not yet built** — see
+**Status: implemented** (`agent/`, `ui/chat_app.py`) — see
 [docs/agent-plan.md](docs/agent-plan.md) for the full design (verified
-against real, current LangChain/OpenAI/Tavily APIs before writing it).
+against real, current LangChain/OpenAI/Tavily APIs before writing it) and
+[TODO.md](TODO.md) for what's still open. Verified end-to-end against
+real OpenAI/Pinecone/Tavily, including by hand through the actual chat UI
+in a browser, not just described below.
 
 1. User submits a question via a Streamlit chat UI.
 2. A LangChain tool-calling agent (`langchain.agents.create_agent`,
@@ -194,6 +197,19 @@ the vector count and dimension directly (should match the normalized
 paper count and 1536); use the console's query/browse tool to inspect
 individual vectors and metadata.
 
+### 6. Chat with the agent
+
+```bash
+.venv/bin/streamlit run ui/chat_app.py
+```
+
+Opens a browser tab with a chat UI. Ask anything about AI/software-dev
+research — the agent searches the corpus first, falls back to a live web
+search (still scoped to AI/software-dev topics) if the corpus has nothing
+relevant, and declines outright if the question is unrelated to either.
+Each answer has a collapsible "Sources" list, labeled by whether it came
+from the paper corpus or the web.
+
 ### Debugging tips
 
 - Both CLI commands log counts (`Fetched N papers`, `Normalized N, dropped
@@ -243,8 +259,8 @@ Other options if you want something more visual:
 
 1. ~~Ingestion MVP: arXiv API fetch (metadata only, narrow categories) →
    embed abstracts → upsert to Pinecone.~~ Done.
-2. **In progress** — Serving MVP: chat agent, corpus search → web search
-   fallback → honest "nothing found" as a last resort. Planned in
+2. ~~Serving MVP: chat agent, corpus search → web search fallback →
+   honest "nothing found" as a last resort.~~ Done — see
    [docs/agent-plan.md](docs/agent-plan.md) (`rag-agent` branch).
 3. Chunking benchmarks: compare strategies once full-text parsing is added.
 4. Expand category/date coverage based on MVP learnings.

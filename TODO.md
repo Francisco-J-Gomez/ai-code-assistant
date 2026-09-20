@@ -54,13 +54,15 @@ first. Not blocking current progress — revisit when relevant.
   a scheduled (not every-push) CI job if this ever needs to run
   unattended.
 
-## Agent / serving side (in progress, see docs/agent-plan.md)
+## Agent / serving side (MVP done, see docs/agent-plan.md)
 
-Built so far: `agent/config.py` (`AgentConfig`), `agent/retrieval_tool.py`
+Built: `agent/config.py` (`AgentConfig`), `agent/retrieval_tool.py`
 (`search_papers`), `agent/graph.py` (the agent itself — both tools, system
-prompt, `InMemorySaver` checkpointer). Verified end-to-end against real
-OpenAI + Pinecone + Tavily across all three cases (corpus hit, web
-fallback, out-of-scope decline) — see `tests/test_agent_integration.py`.
+prompt, `InMemorySaver` checkpointer), `ui/chat_app.py` (Streamlit chat).
+Verified end-to-end against real OpenAI + Pinecone + Tavily across all
+three cases (corpus hit, web fallback, out-of-scope decline) — both via
+`tests/test_agent_integration.py` and by hand in a real browser through
+the actual chat UI.
 
 - **LLM provider decided: OpenAI-only** (`gpt-5-mini` default), for a
   single-provider stack (same account/key already used for embeddings).
@@ -81,8 +83,20 @@ fallback, out-of-scope decline) — see `tests/test_agent_integration.py`.
   the prompt alone." Fixed by making the scope check an explicit Step 0
   in the prompt, before any tool-use instructions; now codified as a
   regression test.
+- **Real gap found and fixed via browser testing** (things the REPL-only
+  verification couldn't catch): `streamlit run ui/chat_app.py` put `ui/`
+  rather than the project root on `sys.path`, breaking `import agent` —
+  fixed with an explicit path insert. Found the identical latent bug in
+  `scripts/debug_pipeline.py` while checking for it elsewhere (masked
+  there because it's normally run from PyCharm, which sets `PYTHONPATH`
+  itself) and fixed it the same way. Also deduped the Sources list by
+  URL — the agent sometimes calls `search_papers` twice in one turn
+  (e.g. a refined retry), which surfaced the same paper twice.
 - `LANGSMITH_*` vars are in `.env` but tracing isn't wired into any code
   yet — should already auto-instrument once these are set (no code change
   expected), but not yet verified that traces actually show up in the
   LangSmith UI.
-- Still to build: `ui/chat_app.py` (Streamlit chat interface).
+- Conversation memory is `InMemorySaver` — process-local, lost whenever
+  the Streamlit server restarts. Fine for local single-user use; durable
+  storage is a later concern if this ever needs to survive restarts or
+  serve multiple users.
