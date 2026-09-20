@@ -46,8 +46,21 @@ first. Not blocking current progress — revisit when relevant.
   free plan — this repo is private. Revisit if the repo goes public or the
   account upgrades; until then, check the PR's CI status manually before
   merging.
+- Neither `tests/test_pipeline_embed.py` (mocked, always runs) nor the
+  real-API opt-in suites (`test_arxiv_integration.py`,
+  `test_agent_integration.py`) exercise real OpenAI/Pinecone/Tavily in CI
+  — the opt-in ones need secrets CI doesn't have configured. Verified
+  manually each time so far. Worth adding as GitHub Actions secrets +
+  a scheduled (not every-push) CI job if this ever needs to run
+  unattended.
 
 ## Agent / serving side (in progress, see docs/agent-plan.md)
+
+Built so far: `agent/config.py` (`AgentConfig`), `agent/retrieval_tool.py`
+(`search_papers`), `agent/graph.py` (the agent itself — both tools, system
+prompt, `InMemorySaver` checkpointer). Verified end-to-end against real
+OpenAI + Pinecone + Tavily across all three cases (corpus hit, web
+fallback, out-of-scope decline) — see `tests/test_agent_integration.py`.
 
 - **LLM provider decided: OpenAI-only** (`gpt-5-mini` default), for a
   single-provider stack (same account/key already used for embeddings).
@@ -61,6 +74,15 @@ first. Not blocking current progress — revisit when relevant.
   `search_papers` finds nothing relevant. Confirmed working with a real
   call. See docs/agent-plan.md for how the system prompt keeps this
   scoped to AI/software-dev questions rather than a general web assistant.
+- **Real gap found and fixed while testing**: an early system-prompt
+  version let the agent answer a genuinely out-of-scope question (a
+  cookie recipe) directly from general knowledge, calling no tool at all
+  — exactly the failure mode the plan flagged as "hard to guarantee from
+  the prompt alone." Fixed by making the scope check an explicit Step 0
+  in the prompt, before any tool-use instructions; now codified as a
+  regression test.
 - `LANGSMITH_*` vars are in `.env` but tracing isn't wired into any code
-  yet — wire in when building the agent, for visibility into
-  retrieval + generation steps.
+  yet — should already auto-instrument once these are set (no code change
+  expected), but not yet verified that traces actually show up in the
+  LangSmith UI.
+- Still to build: `ui/chat_app.py` (Streamlit chat interface).
