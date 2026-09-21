@@ -228,11 +228,18 @@ individual vectors and metadata.
 
 ### 6. Chat with the agent
 
+Prerequisites: the Pinecone index is populated (steps 2–5) and `.env`
+contains `OPENAI_API_KEY`, `PINECONE_API_KEY`, `PINECONE_INDEX_NAME` and
+`TAVILY_API_KEY` (copy `.env.example` if you haven't yet).
+
 ```bash
+.venv/bin/python -m pip install -r requirements.txt   # first time only
 .venv/bin/streamlit run ui/chat_app.py
 ```
 
-Opens a browser tab with a chat UI. Ask anything about AI/software-dev
+Opens a browser tab (http://localhost:8501) with a chat UI. Streamlit
+reloads on file changes, so you can edit and test live. On Streamlit Cloud,
+put the same keys in the app's secrets instead of `.env`. Ask anything about AI/software-dev
 research — the agent searches the corpus first, falls back to a live web
 search (still scoped to AI/software-dev topics) if the corpus has nothing
 relevant, and declines outright if the question is unrelated to either.
