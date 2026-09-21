@@ -1,0 +1,8 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    # Keys come from a local .env that is never copied into the image.
+    env_file: .env
+    restart: unless-stopped

@@ -29,3 +29,22 @@ jobs:
         env:
           RUN_ARXIV_INTEGRATION_TESTS: "1"
         run: python -m pytest tests/test_arxiv_integration.py -v
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t ai-code-assistant .
+
+      - name: Smoke test (app starts and reports healthy)
+        run: |
+          docker run -d --name app -p 8501:8501 ai-code-assistant
+          for i in $(seq 1 30); do
+            curl -fs http://localhost:8501/_stcore/health && exit 0
+            sleep 2
+          done
+          docker logs app
+          exit 1

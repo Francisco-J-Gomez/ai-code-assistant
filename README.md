@@ -246,6 +246,22 @@ relevant, and declines outright if the question is unrelated to either.
 Each answer has a collapsible "Sources" list, labeled by whether it came
 from the paper corpus or the web.
 
+#### Run with Docker
+
+Only the chat app is containerized (ingestion stays a local/offline step).
+It queries an already-populated Pinecone index.
+
+```bash
+cp .env.example .env        # fill in OPENAI_API_KEY, PINECONE_API_KEY,
+                            # PINECONE_INDEX_NAME, TAVILY_API_KEY
+docker compose up --build   # then open http://localhost:8501
+```
+
+The image never contains `.env` (it is in `.dockerignore`); the keys are
+injected at run time via `env_file`. Anyone who can run the container can
+read those env vars, so use dedicated, spend-capped keys and revoke them
+afterwards.
+
 ### Debugging tips
 
 - Both CLI commands log counts (`Fetched N papers`, `Normalized N, dropped
