@@ -4,7 +4,7 @@ Skipped by default (mirrors tests/test_arxiv_integration.py) since they
 hit live external services, cost real (if tiny) money, and take longer
 than the mocked unit tests. Run explicitly with:
 
-    RUN_AGENT_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/test_agent_integration.py -v
+    RUN_AGENT_INTEGRATION_TESTS=1 uv run pytest tests/test_agent_integration.py -v
 
 These three cases were found to matter in practice: an early version of
 the system prompt let the agent answer a genuinely out-of-scope question

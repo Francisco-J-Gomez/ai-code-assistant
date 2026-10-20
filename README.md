@@ -131,9 +131,12 @@ mentioned below.
 ### 0. Setup
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-dev.txt   # includes pytest
+uv sync   # creates .venv and installs the locked deps from pyproject.toml / uv.lock
 ```
+
+Requires [uv](https://docs.astral.sh/uv/) and Python 3.12+ (uv will fetch a
+matching interpreter if needed). Commands below use `uv run`, which runs
+inside the project's `.venv` — no manual activation needed.
 
 Fetch/normalize need no API keys (the arXiv API requires no auth). Step 4
 (embed) needs `OPENAI_API_KEY`/`PINECONE_API_KEY` — copy `.env.example` to
@@ -142,24 +145,24 @@ Fetch/normalize need no API keys (the arXiv API requires no auth). Step 4
 ### 1. (Optional) Run the tests
 
 ```bash
-.venv/bin/python -m pytest -q
+uv run pytest -q
 ```
 
 Mocked unit tests only — fast, no network. There's also a small
 integration suite that hits the real arXiv API, skipped by default:
 
 ```bash
-RUN_ARXIV_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/test_arxiv_integration.py -v
+RUN_ARXIV_INTEGRATION_TESTS=1 uv run pytest tests/test_arxiv_integration.py -v
 ```
 
 ### 2. Fetch raw metadata from arXiv
 
 ```bash
 # Small capped run, good for a first sanity check / debugging:
-.venv/bin/python -m ingestion.cli fetch --max-results 15 --db-path data/papers.db
+uv run python -m ingestion.cli fetch --max-results 15 --db-path data/papers.db
 
 # Full scope (cs.SE + cs.PL, plus keyword-filtered cs.AI/cs.LG/cs.CL, since 2020-01-01):
-.venv/bin/python -m ingestion.cli fetch --db-path data/papers.db
+uv run python -m ingestion.cli fetch --db-path data/papers.db
 ```
 
 Useful flags: `--categories`, `--keyword-categories`, `--keywords`,
@@ -173,7 +176,7 @@ Data lands in the `papers` table of the SQLite file at `--db-path`
 ### 3. Filter & normalize
 
 ```bash
-.venv/bin/python -m ingestion.cli normalize --db-path data/papers.db
+uv run python -m ingestion.cli normalize --db-path data/papers.db
 ```
 
 Reads everything in the raw store, drops out-of-scope/withdrawn/malformed
@@ -186,10 +189,10 @@ re-fetching.
 
 ```bash
 # Smoke-test with a handful of papers before committing to a full run:
-.venv/bin/python -m ingestion.cli embed --limit 3
+uv run python -m ingestion.cli embed --limit 3
 
 # Full run (~30k papers, a few minutes):
-.venv/bin/python -m ingestion.cli embed
+uv run python -m ingestion.cli embed
 ```
 
 One chunk per paper (its abstract) for the MVP, embedded with OpenAI
@@ -210,7 +213,7 @@ individual vectors and metadata.
 ### 6. Chat with the agent
 
 ```bash
-.venv/bin/streamlit run ui/chat_app.py
+uv run streamlit run ui/chat_app.py
 ```
 
 Opens a browser tab with a chat UI. Ask anything about AI/software-dev
@@ -240,14 +243,14 @@ data without extra setup:
 
 ```bash
 # Row counts, published-date range, and category breakdown for both tables:
-.venv/bin/python scripts/inspect_db.py summary
+uv run python scripts/inspect_db.py summary
 
 # Most recent N rows (default: normalized table):
-.venv/bin/python scripts/inspect_db.py sample --table normalized --limit 20
-.venv/bin/python scripts/inspect_db.py sample --table raw --limit 20
+uv run python scripts/inspect_db.py sample --table normalized --limit 20
+uv run python scripts/inspect_db.py sample --table raw --limit 20
 
 # Full-text-ish search over title/abstract:
-.venv/bin/python scripts/inspect_db.py search "program repair" --table normalized
+uv run python scripts/inspect_db.py search "program repair" --table normalized
 ```
 
 Other options if you want something more visual:
@@ -262,5 +265,6 @@ Other options if you want something more visual:
   df = pd.read_sql("SELECT * FROM normalized_papers", conn)
   df["primary_category"].value_counts()
   ```
-  (`pip install pandas` — not in requirements.txt, since it's only needed
-  for ad hoc exploration, not the pipeline itself.)
+  (pandas isn't a direct dependency in `pyproject.toml` — it's only needed
+  for ad hoc exploration, not the pipeline itself. Run it with
+  `uv run --with pandas python`.)

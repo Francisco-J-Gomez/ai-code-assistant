@@ -13,9 +13,9 @@ full rate-limited fetch (~33.5k papers, ~1 request/3s). Set it to None once
 you're done stepping through and want the full dataset - or just use the
 CLI directly at that point:
 
-    .venv/bin/python -m ingestion.cli fetch --db-path data/papers.db
-    .venv/bin/python -m ingestion.cli normalize --db-path data/papers.db
-    .venv/bin/python -m ingestion.cli embed --db-path data/papers.db
+    uv run python -m ingestion.cli fetch --db-path data/papers.db
+    uv run python -m ingestion.cli normalize --db-path data/papers.db
+    uv run python -m ingestion.cli embed --db-path data/papers.db
 
 RUN_EMBED is off by default since it needs OPENAI_API_KEY/PINECONE_API_KEY
 in .env and spends real (if tiny) money - flip it on once those are set.

@@ -4,7 +4,7 @@ Skipped by default (plan step 10: "marked slow/opt-in, not run by
 default") since they hit a live external service and take longer than the
 mocked unit tests. Run explicitly with:
 
-    RUN_ARXIV_INTEGRATION_TESTS=1 .venv/bin/python -m pytest tests/test_arxiv_integration.py -v
+    RUN_ARXIV_INTEGRATION_TESTS=1 uv run pytest tests/test_arxiv_integration.py -v
 """
 import itertools
 import os

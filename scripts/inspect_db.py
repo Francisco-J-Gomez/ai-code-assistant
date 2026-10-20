@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Local inspection tool for the ingestion SQLite store.
 
-Stdlib only (no dependency on requirements.txt), so it works even before
+Stdlib only (no third-party dependencies), so it works even before
 the venv is set up, and lets you sanity-check the pipeline's output without
 installing a separate SQLite GUI. Usage:
 
-    python scripts/inspect_db.py summary
-    python scripts/inspect_db.py sample --table normalized --limit 10
-    python scripts/inspect_db.py search "code generation" --table normalized
+    uv run python scripts/inspect_db.py summary
+    uv run python scripts/inspect_db.py sample --table normalized --limit 10
+    uv run python scripts/inspect_db.py search "code generation" --table normalized
 """
 import argparse
 import sqlite3
