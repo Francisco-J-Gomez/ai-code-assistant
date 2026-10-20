@@ -77,7 +77,8 @@ Query rewriting and multi-hop retrieval can be layered on later.
 | `config.py` | `AgentConfig` — LLM model/temperature, retrieval `top_k`, web-search result count. Composes `EmbeddingConfig` from `ingestion/` so queries are embedded with the same model/dimension/index as the corpus. |
 | `retrieval_tool.py` | The `search_papers` tool (Pinecone query). |
 | `graph.py` | `build_agent()`: both tools, the system prompt, and an `InMemorySaver` checkpointer for per-thread conversation memory. |
-| `../ui/chat_app.py` | Streamlit chat interface. |
+| `results.py` | `extract_sources()` (deduplicated citations from a turn's tool results) and `classify_answer_source()` (corpus / web / not-grounded badge). Used by the UI; unit-tested. |
+| `../ui/chat_app.py` | Streamlit chat interface: session state, rendering, styling. |
 
 Conversation memory is process-local (lost when the Streamlit server
 restarts), which is fine for local single-user use.
