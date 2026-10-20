@@ -33,7 +33,6 @@ Two independent systems, built and tested separately:
 ## Open decisions
 
 - **Full-text chunking strategy** — to be settled empirically (see Benchmarking below) once full-text parsing exists.
-- **Exact OpenAI model size** (`gpt-5` vs. `gpt-5-mini` vs. `gpt-5-nano`) — see [docs/agent-plan.md](docs/agent-plan.md).
 
 ## Ingestion pipeline (offline)
 
@@ -116,20 +115,6 @@ enforced by the graph's edges.
 5. This two-tool decision (corpus vs. web vs. neither) is the first real
    "agentic" behavior; more (e.g. query rewriting, multi-hop retrieval)
    can be layered on once this works.
-
-## Benchmarking chunking strategies
-
-Before committing to one approach, test candidates against a small labeled set
-of questions + expected source papers, comparing retrieval precision/recall
-and answer quality:
-
-- Abstract-only chunks (one chunk per paper).
-- Fixed-size token windows with overlap, over full text.
-- Section-aware chunking (intro/method/results/etc.) once full-text parsing
-  is in place.
-
-Track: retrieval hit rate, chunk count / index size, embedding cost, and
-qualitative answer grounding.
 
 ## Tech stack
 

@@ -11,8 +11,16 @@ first. Not blocking current progress — revisit when relevant.
   search_document/search_query modes are interesting for RAG specifically),
   local `sentence-transformers` (bge-base/large).
 - **Chunking strategy benchmarks** (already flagged in
-  docs/data-ingestion-plan.md) once full-text PDF parsing exists — compare
-  abstract-only vs. fixed-window vs. section-aware chunking.
+  docs/data-ingestion-plan.md) — test candidates against a small labeled
+  set of questions + expected source papers, comparing retrieval
+  precision/recall and answer quality:
+  - Abstract-only chunks (one chunk per paper).
+  - Fixed-size token windows with overlap, over full text.
+  - Section-aware chunking (intro/method/results/etc.), once full-text PDF
+    parsing exists.
+
+  Track: retrieval hit rate, chunk count / index size, embedding cost, and
+  qualitative answer grounding.
 - **Pinecone namespace strategy**: currently everything upserts into the
   default (empty) namespace. Consider namespacing by embedding model
   version so alternate models can be trialed without clobbering the
