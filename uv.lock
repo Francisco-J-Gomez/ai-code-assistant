@@ -13,7 +13,7 @@ resolution-markers = [
 [[package]]
 name = "ai-code-assistant"
 version = "0.1.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
     { name = "feedparser" },
     { name = "langchain" },
