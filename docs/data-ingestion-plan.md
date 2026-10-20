@@ -2,13 +2,13 @@
 
 **Status: implemented and run end-to-end** — ~30k papers fetched,
 normalized, embedded, and upserted to Pinecone. This doc is kept as the
-detailed design reference; see [README.md](../README.md) for exact
+detailed design reference; see [ingestion/README.md](../ingestion/README.md) for exact
 commands to run it yourself.
 
 Scope: MVP ingestion of arXiv paper **abstracts** for `cs.SE` + `cs.PL` in
 full, plus `cs.AI`/`cs.LG`/`cs.CL` filtered to abstracts mentioning a
 software-dev term, since 2020, into Pinecone. Full-text ingestion and
-chunking benchmarks are explicitly deferred (see [README.md](../README.md)).
+chunking benchmarks are explicitly deferred (see [TODO.md](../TODO.md)).
 
 ## Design principles
 

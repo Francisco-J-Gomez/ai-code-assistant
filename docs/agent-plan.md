@@ -5,7 +5,7 @@ about AI and software development grounded in the Pinecone corpus the
 ingestion pipeline built (~30k arXiv abstracts), falling back to a live
 Tavily web search — still scoped to AI/software-dev topics — when the
 corpus has nothing relevant. This is the "Serving API" half of the
-project (see [README.md](../README.md) "Serving API (online, agentic)"),
+project (see [agent/README.md](../agent/README.md)),
 picking up where `docs/data-ingestion-plan.md` left off.
 
 ## Design principles
@@ -13,8 +13,8 @@ picking up where `docs/data-ingestion-plan.md` left off.
 - **Grounded first, honest about gaps** — always search before answering a
   factual question (corpus, then web as a fallback — see below); if
   neither turns up anything relevant, say so rather than hallucinate
-  (extends the README's original "Decisions so far" table, which predates
-  the web-search-fallback decision).
+  (extends the original "Decisions so far" table from the old README, which
+  predates the web-search-fallback decision).
 - **Real tool-calling agent, not a fixed chain** — the LLM decides whether
   and when to call the retrieval tool, via LangChain's agent framework.
   This is the actual "agents" learning goal of the project, not just RAG.
