@@ -25,14 +25,10 @@ Two independent systems, built and tested separately:
 | MVP scope | Start with **abstracts only**, narrower category filter (e.g. `cs.SE` + a slice of `cs.AI`/`cs.LG`) rather than the full corpus. Expand to full-text chunking later. |
 | Relevance gating | No separate classifier — retrieve, then let the **LLM decide** post-retrieval whether context is sufficient. If not, fall back to a live web search (still scoped to AI/software-dev topics) before giving up and saying so honestly. |
 | Pipeline structure | Split ingestion (offline) from serving (online) from day one. |
-| Chunking strategy (MVP) | One chunk per paper = its abstract, behind a `ChunkerStrategy` interface. Full-text chunking strategy is still open — decide via benchmarks (see below) once full-text parsing exists. |
+| Chunking strategy (MVP) | One chunk per paper = its abstract, behind a `ChunkerStrategy` interface. Full-text chunking strategy is still open — decide via benchmarks (see [TODO.md](TODO.md)) once full-text parsing exists. |
 | Embedding model | **OpenAI `text-embedding-3-small`** (1536-dim) — cheap (~$0.12 for the full corpus), fast, best LangChain support. Alternatives to benchmark later in [TODO.md](TODO.md). |
 | Agent LLM | **OpenAI `gpt-5-mini`** — single-provider stack (same account as embeddings); confirmed working with tool-calling. See [docs/agent-plan.md](docs/agent-plan.md). |
 | Web search fallback | **Tavily**, via `langchain-tavily`, as a second agent tool used only when the corpus has nothing relevant. |
-
-## Open decisions
-
-- **Full-text chunking strategy** — to be settled empirically (see Benchmarking below) once full-text parsing exists.
 
 ## Ingestion pipeline (offline)
 
