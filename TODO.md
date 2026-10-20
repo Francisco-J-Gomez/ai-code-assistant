@@ -74,10 +74,10 @@ the actual chat UI.
 
 - **LLM provider decided: OpenAI-only** (`gpt-5-mini` default), for a
   single-provider stack (same account/key already used for embeddings).
-  `GROQ_API_KEY` in `.env` is unused as a result — Groq's current models
-  (`openai/gpt-oss-120b`/`20b`) were evaluated and confirmed working with
-  tool-calling, so it's a viable option to revisit later if cost/latency
-  comparison against OpenAI ever becomes worth doing.
+  Groq's current models (`openai/gpt-oss-120b`/`20b`) were evaluated and
+  confirmed working with tool-calling (it would need a `GROQ_API_KEY`), so
+  it's a viable option to revisit later if cost/latency comparison against
+  OpenAI ever becomes worth doing.
 - **Web search fallback decided: in scope for MVP**, not deferred —
   `TAVILY_API_KEY` is used by a second tool (`web_search`, via
   `langchain-tavily`'s ready-made `TavilySearch`), triggered when

@@ -34,8 +34,8 @@ arXiv API → raw metadata store → filter/normalize → chunk → embed → up
 ### 1. Config & project setup
 
 - `.env` for secrets: `OPENAI_API_KEY`, `PINECONE_API_KEY` (plus
-  `GROQ_API_KEY`/`TAVILY_API_KEY`/`LANGSMITH_*` for the not-yet-built
-  serving/agent side — see `.env.example`).
+  `TAVILY_API_KEY`/`LANGSMITH_*` for the serving/agent side — see
+  `.env.example`).
 - `config.yaml` (or similar) for non-secret knobs: categories, date range,
   batch sizes, Pinecone index/namespace — keeps re-scoping (e.g. adding a
   category later) a config change, not a code change.
