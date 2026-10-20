@@ -1,6 +1,6 @@
 """Streamlit chat UI for the RAG agent. Run with:
 
-    .venv/bin/streamlit run ui/chat_app.py
+    uv run streamlit run ui/chat_app.py
 """
 import json
 import os
