@@ -1,8 +1,8 @@
 import pytest
 
-import ingestion.pinecone_client as pinecone_client_module
+import ingestion.clients.pinecone_client as pinecone_client_module
 from ingestion.chunking.base import Chunk
-from ingestion.pinecone_client import PineconeStore
+from ingestion.clients.pinecone_client import PineconeStore
 
 
 def make_chunk(**overrides) -> Chunk:

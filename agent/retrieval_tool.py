@@ -1,8 +1,8 @@
 from langchain_core.tools import tool
 
 from agent.config import AgentConfig
-from ingestion.embeddings import Embedder
-from ingestion.pinecone_client import PineconeStore
+from ingestion.clients.embeddings import Embedder
+from ingestion.clients.pinecone_client import PineconeStore
 
 
 def make_search_papers_tool(config: AgentConfig):

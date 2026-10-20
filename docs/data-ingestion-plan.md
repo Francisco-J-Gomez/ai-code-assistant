@@ -65,7 +65,7 @@ if a fetch run is interrupted.
   whose result count would exceed that has its date range bisected
   up front (probed via a cheap `max_results=1` request first) rather than
   paginating into the wall — see `ARXIV_MAX_START` in
-  `ingestion/arxiv_client.py`.
+  `ingestion/clients/arxiv_client.py`.
 - Paginate with `start`/`max_results` (batches of ~100); **respect
   arXiv's rate-limit guidance (~1 request per 3s)** — this is a courtesy
   limit on a free public API, not a hard block, so violating it risks
@@ -158,30 +158,30 @@ if a fetch run is interrupted.
 
 ## Project layout
 
-The layout below was the original proposal; the real `ingestion/`
-directory is the source of truth and has grown a few files beyond this
-(`normalize.py`, `normalized_store.py`, `pipeline.py`,
-`embedding_config.py`, `embedding_cache.py`, a fuller `tests/` — see the
-repo directly rather than expecting this block to stay in sync):
+The real `ingestion/` directory is the source of truth (see also
+[ingestion/README.md](../ingestion/README.md)); this is the current shape:
 
 ```
 ai-code-assistant/
   ingestion/
-    __init__.py
-    config.py
-    arxiv_client.py
+    cli.py                 # fetch / normalize / embed subcommands
+    pipeline.py            # the three stages, wiring clients + stores together
+    config.py              # IngestionConfig, EmbeddingConfig
     models.py              # PaperMetadata
-    store.py               # raw metadata persistence (SQLite)
+    normalize.py           # filter + clean raw papers
+    storage.py             # SQLite stores: raw, normalized, embedding cache
+    inspect_db.py          # local dataset inspection tool
     chunking/
       base.py              # ChunkerStrategy interface
       abstract_chunker.py
-    embeddings.py
-    pinecone_client.py
-    cli.py
+    clients/               # wrappers around external services
+      arxiv_client.py
+      embeddings.py        # OpenAI
+      pinecone_client.py
   tests/
     test_arxiv_client.py
     test_chunking.py
-    test_store.py
+    test_stores.py
   docs/
     data-ingestion-plan.md   # this file
   .env.example
@@ -189,7 +189,7 @@ ai-code-assistant/
 
 ## Implementation order
 
-1. ✅ `config.py` + `arxiv_client.py` + `store.py` — fetch `cs.SE` only into
+1. ✅ `config.py` + `clients/arxiv_client.py` + `storage.py` — fetch `cs.SE` only into
    the raw store, no embedding yet. Verify counts look sane.
 2. ✅ Extend to full MVP category/date scope.
 3. ✅ Chunking (abstract) + embedding, with the content-hash cache.

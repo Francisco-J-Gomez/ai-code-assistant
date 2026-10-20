@@ -3,8 +3,8 @@ from datetime import datetime
 import feedparser
 import pytest
 
-import ingestion.arxiv_client as arxiv_client
-from ingestion.arxiv_client import _fetch_scope_entries, _parse_entry, _passes_keyword_filter, _scope_queries
+import ingestion.clients.arxiv_client as arxiv_client
+from ingestion.clients.arxiv_client import _fetch_scope_entries, _parse_entry, _passes_keyword_filter, _scope_queries
 from ingestion.config import IngestionConfig
 from ingestion.models import PaperMetadata
 

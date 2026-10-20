@@ -1,16 +1,13 @@
 import logging
 
-from ingestion.arxiv_client import fetch_papers
 from ingestion.chunking.abstract_chunker import AbstractChunker
 from ingestion.chunking.base import Chunk
-from ingestion.config import IngestionConfig
-from ingestion.embedding_cache import EmbeddingCacheStore
-from ingestion.embedding_config import EmbeddingConfig
-from ingestion.embeddings import Embedder
+from ingestion.clients.arxiv_client import fetch_papers
+from ingestion.clients.embeddings import Embedder
+from ingestion.clients.pinecone_client import PineconeStore
+from ingestion.config import EmbeddingConfig, IngestionConfig
 from ingestion.normalize import normalize_paper
-from ingestion.normalized_store import NormalizedPaperStore
-from ingestion.pinecone_client import PineconeStore
-from ingestion.store import RawPaperStore
+from ingestion.storage import EmbeddingCacheStore, NormalizedPaperStore, RawPaperStore
 
 logger = logging.getLogger(__name__)
 

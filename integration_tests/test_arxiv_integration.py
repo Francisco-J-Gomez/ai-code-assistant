@@ -14,7 +14,7 @@ import feedparser
 import pytest
 import requests
 
-from ingestion.arxiv_client import _fetch_scope_entries, _parse_entry, fetch_papers
+from ingestion.clients.arxiv_client import _fetch_scope_entries, _parse_entry, fetch_papers
 from ingestion.config import IngestionConfig
 from ingestion.normalize import normalize_paper
 

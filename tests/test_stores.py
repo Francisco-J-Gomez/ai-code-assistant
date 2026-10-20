@@ -1,8 +1,7 @@
 from pathlib import Path
 
 from ingestion.models import PaperMetadata
-from ingestion.normalized_store import NormalizedPaperStore
-from ingestion.store import RawPaperStore
+from ingestion.storage import NormalizedPaperStore, RawPaperStore
 
 
 def make_paper(**overrides) -> PaperMetadata:

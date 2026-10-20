@@ -1,9 +1,9 @@
 from pathlib import Path
 
-import ingestion.embeddings as embeddings_module
-from ingestion.embedding_cache import EmbeddingCacheStore
-from ingestion.embedding_config import EmbeddingConfig
-from ingestion.embeddings import Embedder
+import ingestion.clients.embeddings as embeddings_module
+from ingestion.clients.embeddings import Embedder
+from ingestion.config import EmbeddingConfig
+from ingestion.storage import EmbeddingCacheStore
 
 
 class _FakeEmbeddingItem:
