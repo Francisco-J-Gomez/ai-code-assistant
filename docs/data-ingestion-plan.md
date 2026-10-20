@@ -138,7 +138,7 @@ if a fetch run is interrupted.
 - Unit tests: fetcher (mocked HTTP), normalizer, chunker, embedder,
   Pinecone client (all mocked) — no network calls; 50 tests total.
 - Integration test against the real arXiv API, opt-in via
-  `RUN_ARXIV_INTEGRATION_TESTS=1` (`tests/test_arxiv_integration.py`).
+  `RUN_ARXIV_INTEGRATION_TESTS=1` (`integration_tests/test_arxiv_integration.py`).
   **Not yet done**: an equivalent opt-in test against real OpenAI/Pinecone
   for the embed stage — verified manually instead so far (see TODO.md).
 - Smoke test: full pipeline run on a handful of papers (`--limit`/

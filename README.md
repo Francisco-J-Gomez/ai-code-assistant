@@ -152,7 +152,7 @@ Mocked unit tests only — fast, no network. There's also a small
 integration suite that hits the real arXiv API, skipped by default:
 
 ```bash
-RUN_ARXIV_INTEGRATION_TESTS=1 uv run pytest tests/test_arxiv_integration.py -v
+RUN_ARXIV_INTEGRATION_TESTS=1 uv run pytest integration_tests/test_arxiv_integration.py -v
 ```
 
 ### 2. Fetch raw metadata from arXiv

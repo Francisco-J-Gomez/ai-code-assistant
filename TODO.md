@@ -33,7 +33,7 @@ first. Not blocking current progress — revisit when relevant.
   size, cloud/region) are CLI-flag-only. Extend if they turn out to need
   changing without a flag.
 - No automated integration test for the embed stage against real
-  OpenAI/Pinecone (unlike `tests/test_arxiv_integration.py` for the fetch
+  OpenAI/Pinecone (unlike `integration_tests/test_arxiv_integration.py` for the fetch
   stage) — verified manually this session instead, since it costs real
   (if tiny) money per run and needs a scratch Pinecone index. Worth adding
   one, opt-in, if this pipeline gets touched often enough for regressions
@@ -69,7 +69,7 @@ Built: `agent/config.py` (`AgentConfig`), `agent/retrieval_tool.py`
 prompt, `InMemorySaver` checkpointer), `ui/chat_app.py` (Streamlit chat).
 Verified end-to-end against real OpenAI + Pinecone + Tavily across all
 three cases (corpus hit, web fallback, out-of-scope decline) — both via
-`tests/test_agent_integration.py` and by hand in a real browser through
+`integration_tests/test_agent_integration.py` and by hand in a real browser through
 the actual chat UI.
 
 - **LLM provider decided: OpenAI-only** (`gpt-5-mini` default), for a

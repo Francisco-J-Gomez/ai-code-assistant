@@ -27,4 +27,4 @@ jobs:
       - name: Run arXiv integration tests (real API, no secrets needed)
         env:
           RUN_ARXIV_INTEGRATION_TESTS: "1"
-        run: uv run pytest tests/test_arxiv_integration.py -v
+        run: uv run pytest integration_tests/test_arxiv_integration.py -v

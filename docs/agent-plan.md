@@ -106,7 +106,7 @@ factual/grounded answers over creative ones), `retrieval_top_k` (default
 - Unit tests: `search_papers` with mocked `Embedder`/`PineconeStore` (same
   pattern as `tests/test_pipeline_embed.py`). `web_search` needs no unit
   test of our own — it's a third-party tool, not our logic.
-- Opt-in real-API integration test (mirrors `tests/test_arxiv_integration.py`):
+- Opt-in real-API integration test (mirrors `integration_tests/test_arxiv_integration.py`):
   a known in-corpus question resolves via `search_papers` (expected paper
   id appears), and a known out-of-corpus-but-in-scope question triggers
   `web_search` instead.
@@ -184,6 +184,7 @@ ai-code-assistant/
     chat_app.py             # Streamlit chat interface
   tests/
     test_retrieval_tool.py
+  integration_tests/
     test_agent_integration.py   # opt-in, real APIs (corpus hit / web fallback / out-of-scope)
 ```
 
