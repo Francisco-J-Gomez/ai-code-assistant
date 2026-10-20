@@ -1,10 +1,10 @@
 [project]
 name = "ai-code-assistant"
 version = "0.1.0"
-description = "Add your description here"
+description = "Agentic RAG assistant that answers AI and software-development questions from arXiv papers, with web-search fallback"
 readme = "README.md"
 authors = [
-    { name = "fjgomez-gi", email = "fjgomez@generativeintel.com" }
+    { name = "Francisco Javier Gomez Sanchez", email = "gomez.sanchez.francisco@gmail.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
