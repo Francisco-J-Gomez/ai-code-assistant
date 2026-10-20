@@ -7,7 +7,7 @@ before using the chat app, and again whenever you want to refresh the corpus.
 **Status: implemented** and run end-to-end against the full ~30k-paper corpus.
 For the full design see [../docs/data-ingestion-plan.md](../docs/data-ingestion-plan.md);
 for deferred work see [../TODO.md](../TODO.md). Every knob mentioned below
-lives in `config.py` / `embedding_config.py`.
+lives in `config.py`.
 
 ## Quick start: build the full corpus
 
@@ -75,6 +75,20 @@ RUN_INGESTION_INTEGRATION_TESTS=1 uv run pytest integration_tests/test_ingestion
 6. **Idempotent** — chunks are keyed by paper id + chunk index, so re-running
    upserts in place. A content-hash cache also skips re-embedding chunks that
    haven't changed.
+
+## Code layout
+
+| Path | Role |
+|---|---|
+| `cli.py` | `fetch` / `normalize` / `embed` subcommands. |
+| `pipeline.py` | The three stages, wiring clients and stores together. |
+| `config.py` | `IngestionConfig` (what to fetch) and `EmbeddingConfig` (how to embed/upsert). |
+| `models.py` | `PaperMetadata`. |
+| `normalize.py` | Filter and clean raw papers. |
+| `storage.py` | SQLite stores for raw papers, normalized papers, and the embedding cache. |
+| `chunking/` | `ChunkerStrategy` interface and the abstract-only chunker. |
+| `clients/` | Wrappers around external services: `arxiv_client.py`, `embeddings.py` (OpenAI), `pinecone_client.py`. |
+| `inspect_db.py` | Local dataset inspection tool (see below). |
 
 ## Running it, step by step (reference)
 

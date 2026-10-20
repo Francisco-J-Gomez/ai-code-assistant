@@ -20,8 +20,8 @@ picking up where `docs/data-ingestion-plan.md` left off.
   This is the actual "agents" learning goal of the project, not just RAG.
 - **Reuse the ingestion code, don't fork it** — the retrieval tool must
   embed queries with the *same* model/dimension used to build the index
-  (`text-embedding-3-small`, 1536-dim). Reusing `ingestion.embeddings.Embedder`
-  and `ingestion.pinecone_client.PineconeStore` directly guarantees that by
+  (`text-embedding-3-small`, 1536-dim). Reusing `ingestion.clients.embeddings.Embedder`
+  and `ingestion.clients.pinecone_client.PineconeStore` directly guarantees that by
   construction, instead of a second implementation that could drift.
 - **Corpus first, web search as an honest fallback** — always try
   `search_papers` before answering; only fall back to a live Tavily web
@@ -69,7 +69,7 @@ Checked directly rather than assumed, since APIs/models drift fast:
   numpy/no-compiler install failure was from `langchain-pinecone`
   specifically, not `langchain-openai` — and we don't need
   `langchain-pinecone` anyway, since the retrieval tool reuses
-  `ingestion.pinecone_client.PineconeStore` (raw `pinecone` SDK) directly.
+  `ingestion.clients.pinecone_client.PineconeStore` (raw `pinecone` SDK) directly.
 - **Current OpenAI models confirmed working with tool-calling** via a
   real `ChatOpenAI(...).bind_tools([...])` call: `gpt-5`, `gpt-5-mini`,
   `gpt-5-nano`, plus the still-available `gpt-4.1-mini`/`gpt-4o-mini`.
@@ -178,7 +178,7 @@ ai-code-assistant/
   agent/
     __init__.py
     config.py            # AgentConfig
-    retrieval_tool.py     # search_papers tool (reuses ingestion.embeddings/pinecone_client)
+    retrieval_tool.py     # search_papers tool (reuses ingestion.clients.embeddings/pinecone_client)
     graph.py               # create_agent(...) wiring, system prompt, web_search (TavilySearch)
   ui/
     chat_app.py             # Streamlit chat interface

@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from ingestion.embedding_config import EmbeddingConfig
+from ingestion.config import EmbeddingConfig
 
 
 @dataclass(frozen=True)

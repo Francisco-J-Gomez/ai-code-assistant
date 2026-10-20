@@ -20,10 +20,9 @@ from pathlib import Path
 import pytest
 from pinecone import Pinecone
 
-from ingestion.config import IngestionConfig
-from ingestion.embedding_config import EmbeddingConfig
-from ingestion.embeddings import Embedder
-from ingestion.pinecone_client import PineconeStore
+from ingestion.clients.embeddings import Embedder
+from ingestion.clients.pinecone_client import PineconeStore
+from ingestion.config import EmbeddingConfig, IngestionConfig
 from ingestion.pipeline import run_embed_stage, run_fetch_stage, run_normalize_stage
 
 pytestmark = pytest.mark.skipif(

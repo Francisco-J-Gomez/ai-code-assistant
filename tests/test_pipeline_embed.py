@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import ingestion.pipeline as pipeline_module
-from ingestion.embedding_config import EmbeddingConfig
+from ingestion.config import EmbeddingConfig
 from ingestion.models import PaperMetadata
-from ingestion.normalized_store import NormalizedPaperStore
 from ingestion.pipeline import run_embed_stage
+from ingestion.storage import NormalizedPaperStore
 
 
 def make_paper(**overrides) -> PaperMetadata:

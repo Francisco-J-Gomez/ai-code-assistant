@@ -5,8 +5,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-from ingestion.config import IngestionConfig
-from ingestion.embedding_config import EmbeddingConfig
+from ingestion.config import EmbeddingConfig, IngestionConfig
 from ingestion.pipeline import run_embed_stage, run_fetch_stage, run_normalize_stage
 
 
