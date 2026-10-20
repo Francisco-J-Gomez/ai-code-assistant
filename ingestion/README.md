@@ -49,7 +49,13 @@ and `embed` skips chunks it has already embedded. Then start the chat app —
 see [../agent/README.md](../agent/README.md).
 
 Want to try it cheaply first? Add `--max-results 15` to `fetch` and
-`--limit 3` to `embed` for a tiny end-to-end smoke test (see below).
+`--limit 3` to `embed` for a tiny end-to-end smoke test (see below). To
+verify the whole pipeline on a ~1K-paper slice (under a cent of embeddings,
+throwaway Pinecone index, deleted afterwards):
+
+```bash
+RUN_INGESTION_INTEGRATION_TESTS=1 uv run pytest integration_tests/test_ingestion_pipeline.py -v
+```
 
 ## How it works
 

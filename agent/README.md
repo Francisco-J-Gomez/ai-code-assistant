@@ -95,6 +95,7 @@ because they cost a little money and need credentials:
 ```bash
 RUN_AGENT_INTEGRATION_TESTS=1 uv run pytest integration_tests/test_agent_integration.py -v
 RUN_ARXIV_INTEGRATION_TESTS=1 uv run pytest integration_tests/test_arxiv_integration.py -v
+RUN_INGESTION_INTEGRATION_TESTS=1 uv run pytest integration_tests/test_ingestion_pipeline.py -v
 ```
 
 The agent suite covers the three paths: corpus hit, web fallback, and
