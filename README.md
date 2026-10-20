@@ -264,15 +264,3 @@ Other options if you want something more visual:
   ```
   (`pip install pandas` — not in requirements.txt, since it's only needed
   for ad hoc exploration, not the pipeline itself.)
-
-## Roadmap
-
-1. ~~Ingestion MVP: arXiv API fetch (metadata only, narrow categories) →
-   embed abstracts → upsert to Pinecone.~~ Done.
-2. ~~Serving MVP: chat agent, corpus search → web search fallback →
-   honest "nothing found" as a last resort.~~ Done — see
-   [docs/agent-plan.md](docs/agent-plan.md) (`rag-agent` branch).
-3. Chunking benchmarks: compare strategies once full-text parsing is added.
-4. Expand category/date coverage based on MVP learnings.
-5. Layer in agent behavior beyond corpus-vs-web-vs-neither (e.g. query
-   rewriting, multi-hop retrieval, durable multi-session memory).
