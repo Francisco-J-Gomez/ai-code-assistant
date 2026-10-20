@@ -9,6 +9,48 @@ For the full design see [../docs/data-ingestion-plan.md](../docs/data-ingestion-
 for deferred work see [../TODO.md](../TODO.md). Every knob mentioned below
 lives in `config.py` / `embedding_config.py`.
 
+## Quick start: build the full corpus
+
+This gets you from a fresh clone to a populated Pinecone index, which is all
+the chat app needs. It fetches paper **metadata and abstracts only** (~30k
+papers) — no PDFs or full text are downloaded.
+
+**Prerequisites**
+
+- [uv](https://docs.astral.sh/uv/), then `uv sync` from the repo root.
+- An **OpenAI** API key with billing enabled (embeddings only).
+- A **Pinecone** account and API key. The index is created automatically on
+  first run as a serverless index on AWS `us-east-1`; the free plan should be
+  enough for ~30k vectors.
+- Copy `.env.example` to `.env` and fill in `OPENAI_API_KEY` and
+  `PINECONE_API_KEY` (`.env` is gitignored). Fetch and normalize need no keys.
+
+**Expected cost and time:** about $0.12 of OpenAI embeddings; the fetch takes
+tens of minutes (arXiv asks for ~1 request per 3 s), the embed a few minutes.
+
+**Run these three commands, in order, from the repo root:**
+
+```bash
+uv run python -m ingestion.cli fetch       # 1. arXiv -> data/papers.db
+uv run python -m ingestion.cli normalize   # 2. clean and filter
+uv run python -m ingestion.cli embed       # 3. embed + upsert to Pinecone
+```
+
+You'll know each step worked when:
+
+1. `fetch` logs `Fetched N papers` with N around 30k.
+2. `normalize` logs `Normalized N, dropped N`; most papers should be kept.
+3. The vector count on your index at https://app.pinecone.io matches the
+   normalized paper count, with dimension 1536.
+
+If a step is interrupted (or you hit a rate limit or network error), just
+re-run it: every stage is idempotent and picks up without duplicating work,
+and `embed` skips chunks it has already embedded. Then start the chat app —
+see [../agent/README.md](../agent/README.md).
+
+Want to try it cheaply first? Add `--max-results 15` to `fetch` and
+`--limit 3` to `embed` for a tiny end-to-end smoke test (see below).
+
 ## How it works
 
 1. **Fetch metadata** — query the arXiv API for `cs.SE` + `cs.PL` in full,
@@ -28,30 +70,19 @@ lives in `config.py` / `embedding_config.py`.
    upserts in place. A content-hash cache also skips re-embedding chunks that
    haven't changed.
 
-## Setup
+## Running it, step by step (reference)
 
-From the repo root:
-
-```bash
-uv sync
-```
-
-Fetch and normalize need no API keys (the arXiv API requires no auth). The
-embed step needs `OPENAI_API_KEY` and `PINECONE_API_KEY` — copy `.env.example`
-to `.env` and fill in your own keys; `.env` is gitignored.
-
-## Running it, step by step
-
-All commands run from the repo root.
+The detail behind the quick start. All commands run from the repo root; `--db-path`
+defaults to `data/papers.db` for all three, so it is omitted below.
 
 ### 1. Fetch raw metadata from arXiv
 
 ```bash
-# Small capped run, good for a first sanity check / debugging:
-uv run python -m ingestion.cli fetch --max-results 15 --db-path data/papers.db
+# Optional: small capped run, good for a first sanity check / debugging:
+uv run python -m ingestion.cli fetch --max-results 15
 
 # Full scope (cs.SE + cs.PL, plus keyword-filtered cs.AI/cs.LG/cs.CL, since 2020-01-01):
-uv run python -m ingestion.cli fetch --db-path data/papers.db
+uv run python -m ingestion.cli fetch
 ```
 
 Useful flags: `--categories`, `--keyword-categories`, `--keywords`,
@@ -60,12 +91,12 @@ Useful flags: `--categories`, `--keyword-categories`, `--keywords`,
 of minutes) — start with `--max-results` while debugging.
 
 Data lands in the `papers` table of the SQLite file at `--db-path`
-(`data/` is gitignored — this is local scratch data, not committed).
+(default `data/papers.db`; `data/` is gitignored — this is local scratch data, not committed).
 
 ### 2. Filter & normalize
 
 ```bash
-uv run python -m ingestion.cli normalize --db-path data/papers.db
+uv run python -m ingestion.cli normalize
 ```
 
 Reads everything in the raw store, drops out-of-scope/withdrawn/malformed
@@ -77,7 +108,7 @@ re-fetching.
 ### 3. Chunk, embed, and upsert to Pinecone
 
 ```bash
-# Smoke-test with a handful of papers before committing to a full run:
+# Optional: smoke-test with a handful of papers before the full run:
 uv run python -m ingestion.cli embed --limit 3
 
 # Full run (~30k papers, a few minutes):
