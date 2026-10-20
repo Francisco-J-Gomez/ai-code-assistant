@@ -65,3 +65,9 @@ def test_tool_returns_pinecone_results_unmodified(monkeypatch):
     assert captured["embedder"].calls == [["program repair with LLMs"]]
     assert captured["store"].query_calls == [{"vector": [0.1, 0.2, 0.3], "top_k": 7}]
     assert captured["store"].index_name == config.embedding.pinecone_index_name
+
+
+def test_agent_config_composes_embedding_config_with_env_override(monkeypatch):
+    monkeypatch.setenv("PINECONE_INDEX_NAME", "some-other-index")
+    config = AgentConfig()
+    assert config.embedding.pinecone_index_name == "some-other-index"
