@@ -104,8 +104,7 @@ open questions (chunking benchmarks, alternative embedding models, …) are in
 |---|---|
 | `agent/` | The LangGraph agent, its tools, and config. |
 | `ui/` | Streamlit chat app. |
-| `ingestion/` | Offline pipeline that builds the Pinecone corpus. |
-| `scripts/` | Dev helper `inspect_db.py` for browsing the ingestion SQLite store. |
+| `ingestion/` | Offline pipeline that builds the Pinecone corpus (plus `inspect_db` for browsing its SQLite store). |
 | `tests/` | Fast mocked unit tests. |
 | `integration_tests/` | Opt-in tests against real external APIs. |
 | `docs/` | Design plans for the agent and the ingestion pipeline. |

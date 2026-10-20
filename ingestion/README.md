@@ -142,7 +142,7 @@ Then start the chat app (see [../agent/README.md](../agent/README.md)).
 
 - Both CLI commands log counts (`Fetched N papers`, `Normalized N, dropped
   N`) — a big gap between fetched and normalized counts is worth checking
-  with `scripts/inspect_db.py`.
+  with `ingestion/inspect_db.py`.
 - Run `fetch` with a small `--max-results` first; only drop the cap once a
   small batch looks right end-to-end.
 - Logging is INFO by default; category/date/withdrawn drops during
@@ -153,19 +153,19 @@ Then start the chat app (see [../agent/README.md](../agent/README.md)).
 
 ## Visualizing the dataset locally
 
-`scripts/inspect_db.py` is a small stdlib-only tool for looking at the data
+`ingestion/inspect_db.py` is a small stdlib-only tool for looking at the data
 without installing a SQLite GUI:
 
 ```bash
 # Row counts, published-date range, and category breakdown for both tables:
-uv run python scripts/inspect_db.py summary
+uv run python -m ingestion.inspect_db summary
 
 # Most recent N rows (default: normalized table):
-uv run python scripts/inspect_db.py sample --table normalized --limit 20
-uv run python scripts/inspect_db.py sample --table raw --limit 20
+uv run python -m ingestion.inspect_db sample --table normalized --limit 20
+uv run python -m ingestion.inspect_db sample --table raw --limit 20
 
 # Full-text-ish search over title/abstract:
-uv run python scripts/inspect_db.py search "program repair" --table normalized
+uv run python -m ingestion.inspect_db search "program repair" --table normalized
 ```
 
 Other options if you want something more visual:
