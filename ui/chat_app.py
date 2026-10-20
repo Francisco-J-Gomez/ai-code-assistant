@@ -2,7 +2,6 @@
 
     uv run streamlit run ui/chat_app.py
 """
-import json
 import os
 import sys
 import uuid
@@ -32,6 +31,7 @@ except Exception:
 
 from agent.config import AgentConfig
 from agent.graph import build_agent
+from agent.results import classify_answer_source, extract_sources
 
 st.set_page_config(page_title="AI / Software-Dev Research Assistant", page_icon="📄")
 
@@ -176,59 +176,6 @@ with st.sidebar:
     st.button("🆕  New Chat", on_click=_start_new_chat, use_container_width=True)
 
 
-def _extract_sources(new_messages: list) -> list[dict]:
-    sources = []
-    for message in new_messages:
-        if getattr(message, "type", None) != "tool":
-            continue
-        try:
-            payload = json.loads(message.content)
-        except (TypeError, ValueError):
-            continue
-
-        if message.name == "search_papers":
-            for item in payload:
-                sources.append(
-                    {
-                        "kind": "corpus",
-                        "title": item.get("title"),
-                        "url": item.get("source_url"),
-                        "arxiv_id": item.get("arxiv_id"),
-                    }
-                )
-        elif message.name == "tavily_search":
-            for item in payload.get("results", []):
-                sources.append({"kind": "web", "title": item.get("title"), "url": item.get("url")})
-
-    # De-duplicate by url: the agent sometimes calls search_papers more
-    # than once per turn (e.g. retrying with a refined query), which can
-    # surface the same paper twice - seen in practice, not hypothetical.
-    seen_urls = set()
-    deduped = []
-    for source in sources:
-        if source["url"] in seen_urls:
-            continue
-        seen_urls.add(source["url"])
-        deduped.append(source)
-    return deduped
-
-
-def _classify_answer_source(new_messages: list) -> dict:
-    """Which tool actually fired this turn, not what the answer's prose
-    claims - search_papers always returns its top-k regardless of whether
-    the results are actually relevant, so "was a tool called" is the
-    reliable signal, not "did it return something non-empty". If
-    web_search fired at all, the agent judged the corpus insufficient and
-    escalated, regardless of what search_papers happened to return.
-    """
-    tool_names = {getattr(m, "name", None) for m in new_messages if getattr(m, "type", None) == "tool"}
-    if "tavily_search" in tool_names:
-        return {"icon": "🌐", "label": "Includes live web search", "kind": "web"}
-    if "search_papers" in tool_names:
-        return {"icon": "📄", "label": "Grounded in the paper corpus", "kind": "corpus"}
-    return {"icon": "❌", "label": "Not grounded — no relevant source found", "kind": "none"}
-
-
 def _render_badge(badge: dict | None) -> None:
     if not badge:
         return
@@ -272,8 +219,8 @@ if question:
         st.session_state.message_count = len(result["messages"])
 
         answer = result["messages"][-1].content
-        sources = _extract_sources(new_messages)
-        badge = _classify_answer_source(new_messages)
+        sources = extract_sources(new_messages)
+        badge = classify_answer_source(new_messages)
 
         _render_badge(badge)
         st.markdown(answer)
