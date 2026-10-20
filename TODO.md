@@ -95,8 +95,8 @@ the actual chat UI.
   verification couldn't catch): `streamlit run ui/chat_app.py` put `ui/`
   rather than the project root on `sys.path`, breaking `import agent` —
   fixed with an explicit path insert. Found the identical latent bug in
-  `scripts/debug_pipeline.py` while checking for it elsewhere (masked
-  there because it's normally run from PyCharm, which sets `PYTHONPATH`
+  a since-removed debug script while checking for it elsewhere (masked
+  there because it was normally run from PyCharm, which sets `PYTHONPATH`
   itself) and fixed it the same way. Also deduped the Sources list by
   URL — the agent sometimes calls `search_papers` twice in one turn
   (e.g. a refined retry), which surfaced the same paper twice.

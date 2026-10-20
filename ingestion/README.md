@@ -148,8 +148,8 @@ Then start the chat app (see [../agent/README.md](../agent/README.md)).
 - Logging is INFO by default; category/date/withdrawn drops during
   `normalize` log at DEBUG/INFO — see `normalize.py` if you need to see
   exactly why a specific paper was dropped.
-- `scripts/debug_pipeline.py` steps through the pipeline with a capped fetch,
-  handy for an IDE debugger.
+- To step through the pipeline in an IDE debugger, run the module `ingestion.cli`
+  with arguments, e.g. `fetch --max-results 20`.
 
 ## Visualizing the dataset locally
 
