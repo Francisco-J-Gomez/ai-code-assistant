@@ -1,0 +1,28 @@
+[project]
+name = "ai-code-assistant"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "fjgomez-gi", email = "fjgomez@generativeintel.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "feedparser>=6.0",
+    "langchain>=1.4",
+    "langchain-openai>=1.6",
+    "langchain-tavily>=0.2",
+    "langgraph>=1.2",
+    "openai>=1.40",
+    "pinecone>=5.0",
+    "python-dotenv>=1.0",
+    "requests>=2.31",
+    "streamlit>=1.60",
+]
+
+[project.scripts]
+ai-code-assistant = "ai_code_assistant:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14.0"]
+build-backend = "uv_build"
